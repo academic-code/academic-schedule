@@ -1,14 +1,11 @@
 import { loadUser, currentRole } from '~/composables/useUser'
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  // Allow login page
-  if (to.path === "/login") return
+  if (!to.path.startsWith("/admin")) return
 
-  // Load user session
   await loadUser()
 
-  // If no user, redirect to login
-  if (!currentRole.value) {
+  if (currentRole.value !== "ADMIN") {
     return navigateTo("/login")
   }
 })

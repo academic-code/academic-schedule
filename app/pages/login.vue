@@ -1,60 +1,107 @@
 <template>
-  <v-container class="d-flex align-center justify-center" style="height:100vh">
-    <v-card width="420" class="pa-6" elevation="4" rounded="lg">
-      <h2 class="text-h5 text-center mb-6">Academic Scheduler Login</h2>
+  <div class="login-container d-flex align-center justify-center">
+    <v-card width="420" elevation="4" class="pa-6">
 
-      <v-form @submit.prevent="handleLogin">
-        <v-text-field
-          v-model="email"
-          label="Email"
-          type="email"
-          variant="outlined"
-          :disabled="!!auth.loading"
-          class="mb-4"
-        />
+      <div class="text-center mb-6">
+        <v-img src="/logo.png" width="80" class="mx-auto mb-2" />
+        <h2 class="text-h5">Academic Scheduler</h2>
+      </div>
 
-        <v-text-field
-          v-model="password"
-          label="Password"
-          type="password"
-          variant="outlined"
-          :disabled="!!auth.loading"
-          class="mb-4"
-        />
-
-        <v-btn type="submit" color="primary" block :loading="!!auth.loading">
-          Login
-        </v-btn>
-      </v-form>
-
-      <v-alert v-if="auth.error" type="error" variant="tonal" class="mt-4">
-        {{ auth.error }}
+      <!-- ALERT -->
+      <v-alert
+        v-if="alertMessage"
+        :type="alertType"
+        class="mb-4"
+        closable
+        @click:close="alertMessage = ''"
+      >
+        {{ alertMessage }}
       </v-alert>
+
+      <v-text-field
+        v-model="email"
+        label="Email"
+        type="email"
+        prepend-inner-icon="mdi-email"
+        class="mb-4"
+        outlined
+      />
+
+      <v-text-field
+        v-model="password"
+        label="Password"
+        type="password"
+        prepend-inner-icon="mdi-lock"
+        class="mb-6"
+        outlined
+      />
+
+      <v-btn color="primary" block @click="login">
+        Login
+      </v-btn>
     </v-card>
-  </v-container>
+  </div>
 </template>
 
-<script setup lang="ts">
-import { ref, watch } from 'vue'
-import { useAuthComposable } from '@/composables/useAuth'
+<script setup>
+import { ref } from "vue";
+import { useNuxtApp } from "#app";
+import { currentRole, loadUser } from "~/composables/useUser";
 
-const email = ref('')
-const password = ref('')
+definePageMeta({
+  layout: false // no sidebar
+});
 
-const auth = useAuthComposable()
+const { $supabase } = useNuxtApp();
 
-watch(
-  () => auth.currentUser.value,
-  () => {
-    if (!auth.currentUser.value) return
+const email = ref("");
+const password = ref("");
+const alertMessage = ref("");
+const alertType = ref("error");
 
-    if (auth.userRole.value === 'ADMIN') navigateTo('/admin/dashboard')
-    if (auth.userRole.value === 'DEAN') navigateTo('/dean/dashboard')
-    if (auth.userRole.value === 'FACULTY') navigateTo('/faculty/schedules')
+// Login handler
+async function login() {
+  if (!email.value || !password.value) {
+    return showAlert("Please enter your email and password.", "error");
   }
-)
 
-async function handleLogin() {
-  await auth.login(email.value, password.value)
+  const { error } = await $supabase.auth.signInWithPassword({
+    email: email.value,
+    password: password.value
+  });
+
+  if (error) {
+    return showAlert("Invalid email or password", "error");
+  }
+
+  // Load user role
+  await loadUser();
+
+  // Redirect based on role
+  if (currentRole.value === "ADMIN") {
+    return navigateTo("/admin/dashboard");
+  }
+
+  if (currentRole.value === "DEAN") {
+    return navigateTo("/dean/dashboard");
+  }
+
+  if (currentRole.value === "FACULTY") {
+    return navigateTo("/faculty/schedule");
+  }
+
+  showAlert("Unknown role assigned to your account!", "error");
+}
+
+function showAlert(msg, type) {
+  alertMessage.value = msg;
+  alertType.value = type;
 }
 </script>
+
+<style scoped>
+.login-container {
+  height: 100vh;
+  background: #f5f5f5;
+}
+</style>
