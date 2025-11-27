@@ -91,7 +91,6 @@
             <li>subjects</li>
             <li>classes</li>
             <li>user account</li>
-            <li>Supabase Auth account</li>
           </ul>
           <strong>This action cannot be undone.</strong>
         </v-card-text>
@@ -108,11 +107,12 @@
 
 <script setup>
 import { ref, onMounted, computed } from "vue"
-import { useNuxtApp } from "#app"
+import { useSupabase } from "~/composables/useSupabase"
 
 definePageMeta({ layout: "admin" })
 
-const { $supabase } = useNuxtApp()
+// NEW unified supabase instance
+const supabase = useSupabase()
 
 // UI States
 const loading = ref(false)
@@ -162,23 +162,19 @@ async function loadData() {
   loading.value = false
 }
 
-// Load departments
 async function loadDepartments() {
-  const { data } = await $supabase.from("departments").select("*")
+  const { data } = await supabase.from("departments").select("*")
   departments.value = data || []
 }
 
 const departmentOptions = computed(() => departments.value)
 
-// Load deans with join
 async function loadDeans() {
-  const { data, error } = await $supabase
+  const { data, error } = await supabase
     .from("deans")
     .select("id, department_id, user:users(*), department:departments(*)")
 
-  if (error) {
-    return showAlert("Error loading deans", "error")
-  }
+  if (error) return showAlert("Error loading deans", "error")
 
   deansData.value = data.map((d) => ({
     id: d.id,
@@ -191,7 +187,6 @@ async function loadDeans() {
   }))
 }
 
-// Open create modal
 function openCreateModal() {
   form.value = {
     id: null,
@@ -217,26 +212,21 @@ function closeModal() {
   }
 }
 
-// Save dean
 async function saveDean() {
   if (!form.value.email || !form.value.full_name || !form.value.department_id) {
     return showAlert("All fields are required", "error")
   }
 
   if (form.value.id === null) {
-    // CREATE
     const response = await $fetch("/api/create-dean", {
       method: "POST",
       body: form.value,
     })
 
-    if (response.error) {
-      return showAlert(response.error, "error")
-    }
+    if (response.error) return showAlert(response.error, "error")
 
     showAlert("Dean created successfully!", "success")
   } else {
-    // Update is optional, not required in your project.
     showAlert("Dean editing not supported yet.", "info")
   }
 
@@ -244,7 +234,6 @@ async function saveDean() {
   loadDeans()
 }
 
-// Delete dean
 function confirmDelete(dean) {
   deleteInfo.value = dean
   showDeleteDialog.value = true
@@ -262,16 +251,13 @@ async function deleteDeanNow() {
     },
   })
 
-  if (response.error) {
-    return showAlert(response.error, "error")
-  }
+  if (response.error) return showAlert(response.error, "error")
 
   showDeleteDialog.value = false
   showAlert("Dean deleted successfully!", "success")
   loadDeans()
 }
 </script>
-
 
 <style scoped>
 .nav-active {

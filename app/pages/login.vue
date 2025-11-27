@@ -3,7 +3,7 @@
     <v-card width="420" elevation="4" class="pa-6">
 
       <div class="text-center mb-6">
-        <v-img src="/logo.png" width="80" class="mx-auto mb-2" />
+        <v-img src="/Logo.png" width="80" class="mx-auto mb-2" />
         <h2 class="text-h5">Academic Scheduler</h2>
       </div>
 
@@ -39,56 +39,47 @@
       <v-btn color="primary" block @click="login">
         Login
       </v-btn>
+
+      <div class="mt-4 text-center">
+        <NuxtLink to="/forgot-password">
+          Forgot your password?
+        </NuxtLink>
+      </div>
+
     </v-card>
   </div>
 </template>
 
 <script setup>
 import { ref } from "vue";
-import { useNuxtApp } from "#app";
 import { currentRole, loadUser } from "~/composables/useUser";
+import { useSupabase } from "~/composables/useSupabase";
 
-definePageMeta({
-  layout: false // no sidebar
-});
+definePageMeta({ layout: false });
 
-const { $supabase } = useNuxtApp();
-
+const supabase = useSupabase();
 const email = ref("");
 const password = ref("");
 const alertMessage = ref("");
 const alertType = ref("error");
 
-// Login handler
 async function login() {
   if (!email.value || !password.value) {
     return showAlert("Please enter your email and password.", "error");
   }
 
-  const { error } = await $supabase.auth.signInWithPassword({
+  const { error } = await supabase.auth.signInWithPassword({
     email: email.value,
     password: password.value
   });
 
-  if (error) {
-    return showAlert("Invalid email or password", "error");
-  }
+  if (error) return showAlert("Invalid email or password", "error");
 
-  // Load user role
   await loadUser();
 
-  // Redirect based on role
-  if (currentRole.value === "ADMIN") {
-    return navigateTo("/admin/dashboard");
-  }
-
-  if (currentRole.value === "DEAN") {
-    return navigateTo("/dean/dashboard");
-  }
-
-  if (currentRole.value === "FACULTY") {
-    return navigateTo("/faculty/schedule");
-  }
+  if (currentRole.value === "ADMIN") return navigateTo("/admin/dashboard");
+  if (currentRole.value === "DEAN") return navigateTo("/dean/dashboard");
+  if (currentRole.value === "FACULTY") return navigateTo("/faculty/schedule");
 
   showAlert("Unknown role assigned to your account!", "error");
 }

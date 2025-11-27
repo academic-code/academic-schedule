@@ -6,7 +6,13 @@ export default defineNuxtPlugin(() => {
 
   const supabase = createClient(
     config.public.supabaseUrl as string,
-    config.public.supabaseAnonKey as string
+    config.public.supabaseAnonKey as string,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true
+      }
+    }
   )
 
   return {

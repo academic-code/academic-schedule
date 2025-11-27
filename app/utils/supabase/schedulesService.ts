@@ -1,6 +1,8 @@
-// app/utils/supabase/schedulesService.ts
-import supabase from './supabaseClient'
+import { useSupabase } from '~/composables/useSupabase'
 import type { Schedule, SchedulePeriod, UUID } from './types'
+
+// Get supabase instance once
+const supabase = useSupabase()
 
 /**
  * Filters accepted by fetchSchedules()
@@ -17,7 +19,7 @@ export interface ScheduleFilters {
  * Fetch schedules visible to the current user.
  * Automatically respects RLS.
  */
-export async function fetchSchedules(filters: ScheduleFilters = {}): Promise<Schedule[]> {
+export async function fetchSchedules(filters: ScheduleFilters = {} as ScheduleFilters): Promise<Schedule[]> {
   let q = supabase.from('schedules').select('*')
 
   if (filters.departmentId) q = q.eq('department_id', filters.departmentId)
@@ -28,6 +30,7 @@ export async function fetchSchedules(filters: ScheduleFilters = {}): Promise<Sch
 
   const { data, error } = await q
   if (error) throw error
+
   return data as Schedule[]
 }
 
@@ -38,7 +41,7 @@ export async function createScheduleWithPeriods(
   schedule: Partial<Schedule>,
   periods: UUID[]
 ): Promise<{ schedule: Schedule; periods: SchedulePeriod[] }> {
-  // Insert schedule
+
   const { data: s, error: sErr } = await supabase
     .from('schedules')
     .insert(schedule)
@@ -49,13 +52,11 @@ export async function createScheduleWithPeriods(
 
   const scheduleId = s.id as UUID
 
-  // Prepare child period rows
   const rows = periods.map((pid: UUID) => ({
     schedule_id: scheduleId,
     period_id: pid
   }))
 
-  // Insert schedule_periods
   const { data: spData, error: spErr } = await supabase
     .from('schedule_periods')
     .insert(rows)
@@ -63,7 +64,10 @@ export async function createScheduleWithPeriods(
 
   if (spErr) throw spErr
 
-  return { schedule: s as Schedule, periods: spData as SchedulePeriod[] }
+  return {
+    schedule: s as Schedule,
+    periods: spData as SchedulePeriod[]
+  }
 }
 
 /**
@@ -76,5 +80,6 @@ export async function fetchSchedulePeriods(scheduleId: UUID): Promise<SchedulePe
     .eq('schedule_id', scheduleId)
 
   if (error) throw error
+
   return data as SchedulePeriod[]
 }

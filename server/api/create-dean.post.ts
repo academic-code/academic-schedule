@@ -1,5 +1,5 @@
 import { defineEventHandler, readBody } from 'h3'
-import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -9,58 +9,45 @@ export default defineEventHandler(async (event) => {
     return { error: 'Missing required fields' }
   }
 
-  // Create server-side Supabase client
-  const supabase = createServerClient(
-    process.env.NUXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        get: () => "",
-        set: () => {},
-        remove: () => {}
-      }
-    }
+  // Server-side Supabase (service role)
+  const supabase = createClient(
+    process.env.NUXT_PUBLIC_SUPABASE_URL as string,
+    process.env.SUPABASE_SERVICE_ROLE_KEY as string
   )
 
-  // ==========================================
-  // 1) Check if email already exists
-  // ==========================================
-  const { data: list, error: listError } =
-    await supabase.auth.admin.listUsers()
+  /* -----------------------------------------------------
+      1. Check if an auth user already exists
+  ----------------------------------------------------- */
+  const { data: userList, error: listErr } = await supabase.auth.admin.listUsers()
 
-  if (listError) {
-    return { error: listError.message }
-  }
+  if (listErr) return { error: listErr.message }
 
-  const exists = list.users.find(
-    (u) => u.email?.toLowerCase() === email.toLowerCase()
-  )
+  const exists = userList.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+  if (exists) return { error: "This email already exists." }
 
-  if (exists) {
-    return { error: "This email already exists in the system." }
-  }
+  /* -----------------------------------------------------
+      2. Send invite
+  ----------------------------------------------------- */
+  const redirectUrl = `${process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/welcome`
 
-  // ==========================================
-  // 2) Invite user (Sends email automatically)
-  // ==========================================
-  const { data: inviteData, error: inviteError } =
+  const { data: inviteData, error: inviteErr } =
     await supabase.auth.admin.inviteUserByEmail(email, {
       data: {
         role: "DEAN",
         department_id
       },
-      redirectTo: `${process.env.NUXT_PUBLIC_SITE_URL}/welcome`
+      redirectTo: redirectUrl
     })
 
-  if (inviteError) {
-    return { error: `Invite failed: ${inviteError.message}` }
+  if (inviteErr) {
+    return { error: "Invite failed: " + inviteErr.message }
   }
 
-  const auth_user_id = inviteData?.user?.id ?? null
+  const auth_user_id = inviteData.user?.id
 
-  // ==========================================
-  // 3) Insert into users table
-  // ==========================================
+  /* -----------------------------------------------------
+      3. Insert into users table
+  ----------------------------------------------------- */
   const { data: userRow, error: userErr } = await supabase
     .from("users")
     .insert({
@@ -72,30 +59,19 @@ export default defineEventHandler(async (event) => {
     .select()
     .single()
 
-  if (userErr) {
-    return { error: `Failed to insert user: ${userErr.message}` }
-  }
+  if (userErr) return { error: "Failed to insert user: " + userErr.message }
 
-  // ==========================================
-  // 4) Insert into deans table
-  // ==========================================
-  const { data: deanRow, error: deanErr } = await supabase
+  /* -----------------------------------------------------
+      4. Insert into deans table
+  ----------------------------------------------------- */
+  const { error: deanErr } = await supabase
     .from("deans")
     .insert({
       user_id: userRow.id,
       department_id
     })
-    .select()
-    .single()
 
-  if (deanErr) {
-    return { error: `Failed to insert dean: ${deanErr.message}` }
-  }
+  if (deanErr) return { error: "Failed to insert dean: " + deanErr.message }
 
-  return {
-    success: true,
-    message: "Dean created successfully. Email invitation sent.",
-    dean: deanRow,
-    user: userRow
-  }
+  return { success: true }
 })

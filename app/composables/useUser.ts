@@ -1,84 +1,38 @@
-import { ref } from "vue";
-import { useNuxtApp } from "#app";
+import { ref } from 'vue'
+import { useSupabase } from '~/composables/useSupabase'
 
-// GLOBAL USER STATES
-export const currentUser = ref(null);         // Record from public.users
-export const currentRole = ref(null);         // ADMIN | DEAN | FACULTY
-export const currentDepartmentId = ref(null); // Only for DEAN
+export const currentUser = ref<any | null>(null)
+export const currentRole = ref<string | null>(null)
+export const loadingUser = ref(false)
 
 export async function loadUser() {
-  const nuxtApp = useNuxtApp();
+  const supabase = useSupabase()
+  loadingUser.value = true
 
-  // ❗ Safety check: Supabase plugin must be loaded
-  if (!nuxtApp.$supabase) {
-    console.warn("Supabase client not ready yet.");
-    return;
-  }
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
 
-  const { $supabase } = nuxtApp;
-
-  // 1️⃣ GET AUTH USER
-  const { data: authData, error: authError } = await $supabase.auth.getUser();
-
-  if (authError || !authData.user) {
-    // Not logged in gracefully
-    currentUser.value = null;
-    currentRole.value = null;
-    currentDepartmentId.value = null;
-    return;
-  }
-
-  const authUser = authData.user;
-
-  // 2️⃣ GET USER FROM public.users
-  const { data: appUser, error: appUserError } = await $supabase
-    .from("users")
-    .select("*")
-    .eq("auth_user_id", authUser.id)
-    .single();
-
-  if (appUserError) {
-    console.warn("Error loading public.users:", appUserError);
-  }
-
-  if (!appUser) {
-    // ❗ Important: User is not in public.users → force logout on redirect
-    console.warn(
-      "Auth user exists but NOT found in public.users table. Insert required."
-    );
-    currentUser.value = null;
-    currentRole.value = null;
-    currentDepartmentId.value = null;
-    return;
-  }
-
-  // Store basic user data
-  currentUser.value = appUser;
-  currentRole.value = appUser.role;
-
-  // 3️⃣ IF DEAN → load department from deans table
-  if (appUser.role === "DEAN") {
-    const { data: deanData, error: deanError } = await $supabase
-      .from("deans")
-      .select("department_id")
-      .eq("user_id", appUser.id)
-      .single();
-
-    if (deanError) {
-      console.warn("Dean record missing:", deanError);
-      currentDepartmentId.value = null;
-    } else {
-      currentDepartmentId.value = deanData?.department_id || null;
+    if (!session) {
+      currentUser.value = null
+      currentRole.value = null
+      loadingUser.value = false
+      return
     }
+
+    currentUser.value = session.user
+    currentRole.value = session.user.user_metadata?.role ?? null
+  } catch (e) {
+    console.error('loadUser error:', e)
+    currentUser.value = null
+    currentRole.value = null
   }
 
-  // 4️⃣ FACULTY → no department needed
-  if (appUser.role === "FACULTY") {
-    currentDepartmentId.value = null;
-  }
+  loadingUser.value = false
+}
 
-  // 5️⃣ ADMIN → no department
-  if (appUser.role === "ADMIN") {
-    currentDepartmentId.value = null;
-  }
+export async function logoutUser() {
+  const supabase = useSupabase()
+  await supabase.auth.signOut()
+  currentUser.value = null
+  currentRole.value = null
 }
