@@ -2,7 +2,7 @@
   <div>
     <h2 class="text-h5 mb-4">Departments</h2>
 
-    <!-- ALERTS -->
+    <!-- ALERT -->
     <v-alert
       v-if="alertMessage"
       :type="alertType"
@@ -13,50 +13,49 @@
       {{ alertMessage }}
     </v-alert>
 
+    <!-- SEARCH -->
+    <v-text-field
+      v-model="search"
+      label="Search Department"
+      prepend-inner-icon="mdi-magnify"
+      class="mb-4"
+      clearable
+      density="compact"
+    />
+
     <!-- ADD BUTTON -->
-    <v-btn color="primary" class="mb-4" @click="showCreateModal = true">
+    <v-btn color="primary" class="mb-4" @click="openCreate">
       <v-icon left>mdi-plus</v-icon>
       Add Department
     </v-btn>
 
-    <!-- DEPARTMENTS TABLE -->
+    <!-- TABLE -->
     <v-card>
-      <v-table>
-        <thead>
-          <tr>
-            <th class="text-left">Name</th>
-            <th class="text-left">Key</th>
-            <th class="text-left">Type</th>
-            <th class="text-left">Actions</th>
-          </tr>
-        </thead>
+      <v-data-table
+        :items="filteredDepartments"
+        :headers="headers"
+        :loading="loading"
+      >
+        <template #item.actions="{ item }">
+          <v-btn icon size="small" @click="editDepartment(item)">
+            <v-icon>mdi-pencil</v-icon>
+          </v-btn>
 
-        <tbody>
-          <tr v-for="dept in departments" :key="dept.id">
-            <td>{{ dept.name }}</td>
-            <td>{{ dept.normalized_key }}</td>
-            <td>{{ dept.type }}</td>
-            <td>
-              <v-btn icon size="small" @click="editDepartment(dept)">
-                <v-icon>mdi-pencil</v-icon>
-              </v-btn>
-
-              <v-btn icon size="small" color="red" @click="deleteDepartment(dept.id)">
-                <v-icon>mdi-delete</v-icon>
-              </v-btn>
-            </td>
-          </tr>
-        </tbody>
-      </v-table>
+          <v-btn icon size="small" color="red" @click="confirmDelete(item)">
+            <v-icon>mdi-delete</v-icon>
+          </v-btn>
+        </template>
+      </v-data-table>
     </v-card>
 
-    <!-- CREATE / EDIT MODAL -->
-    <v-dialog v-model="showCreateModal" max-width="500">
+    <!-- CREATE/EDIT MODAL -->
+    <v-dialog v-model="showModal" max-width="480">
       <v-card>
-        <v-card-title>Create Department</v-card-title>
+        <v-card-title>{{ form.id ? "Edit Department" : "Create Department" }}</v-card-title>
 
         <v-card-text>
-          <v-text-field v-model="form.name" label="Department Name"></v-text-field>
+          <v-text-field v-model="form.name" label="Department Name" />
+
           <v-select
             v-model="form.type"
             label="Department Type"
@@ -66,12 +65,34 @@
 
         <v-card-actions>
           <v-spacer />
-
           <v-btn variant="text" @click="closeModal">Cancel</v-btn>
+          <v-btn color="primary" @click="saveDepartment">Save</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
-          <v-btn color="primary" @click="saveDepartment">
-            Save
-          </v-btn>
+    <!-- DELETE CONFIRMATION -->
+    <v-dialog v-model="showDeleteDialog" max-width="450">
+      <v-card>
+        <v-card-title class="text-h6">Delete Department?</v-card-title>
+
+        <v-card-text>
+          This will delete:
+          <ul>
+            <li>dean & dean auth account</li>
+            <li>faculty</li>
+            <li>subjects</li>
+            <li>classes</li>
+            <li>schedules</li>
+            <li>schedule periods</li>
+          </ul>
+          <strong>This action cannot be undone.</strong>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer />
+          <v-btn @click="showDeleteDialog = false">Cancel</v-btn>
+          <v-btn color="red" @click="deleteDepartmentNow">Delete</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -79,20 +100,30 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue"
+import { ref, computed, onMounted } from "vue"
 import { useNuxtApp } from "#app"
 
-definePageMeta({
-  layout: "admin"
-})
+definePageMeta({ layout: "admin" })
 
 const { $supabase } = useNuxtApp()
 
-// STATE
+const loading = ref(false)
+const search = ref("")
 const departments = ref([])
-const showCreateModal = ref(false)
+
+const showModal = ref(false)
+const showDeleteDialog = ref(false)
+
+const deleteTarget = ref(null)
+
 const alertMessage = ref("")
 const alertType = ref("success")
+
+function showAlert(msg, type = "success") {
+  alertMessage.value = msg
+  alertType.value = type
+  setTimeout(() => (alertMessage.value = ""), 2000)
+}
 
 const form = ref({
   id: null,
@@ -100,44 +131,64 @@ const form = ref({
   type: "NORMAL"
 })
 
+const headers = [
+  { title: "Name", key: "name" },
+  { title: "Type", key: "type" },
+  { title: "Actions", key: "actions", sortable: false }
+]
+
 onMounted(() => {
   loadDepartments()
 })
 
-// LOAD ALL DEPARTMENTS
 async function loadDepartments() {
+  loading.value = true
   const { data, error } = await $supabase
     .from("departments")
     .select("*")
     .order("name")
 
-  if (error) return console.error(error)
-  departments.value = data
+  if (!error) departments.value = data
+  loading.value = false
 }
 
-// SAVE DEPARTMENT
+const filteredDepartments = computed(() => {
+  if (!search.value) return departments.value
+  return departments.value.filter((d) =>
+    d.name.toLowerCase().includes(search.value.toLowerCase())
+  )
+})
+
+function openCreate() {
+  form.value = { id: null, name: "", type: "NORMAL" }
+  showModal.value = true
+}
+
+function editDepartment(dept) {
+  form.value = { ...dept }
+  showModal.value = true
+}
+
+function closeModal() {
+  showModal.value = false
+  form.value = { id: null, name: "", type: "NORMAL" }
+}
+
 async function saveDepartment() {
-  if (!form.value.name) {
-    showAlert("Department name is required", "error")
-    return
-  }
+  if (!form.value.name) return showAlert("Department name is required", "error")
 
   const normalized_key = form.value.name.toLowerCase().replace(/\s+/g, "_")
 
-  // CHECK FOR DUPLICATE
   const { data: existing } = await $supabase
     .from("departments")
     .select("*")
     .eq("normalized_key", normalized_key)
-    .limit(1)
 
-  if (existing && existing.length > 0 && existing[0].id !== form.value.id) {
-    showAlert("Department already exists", "error")
-    return
+  if (existing?.length && existing[0].id !== form.value.id) {
+    return showAlert("Department already exists", "error")
   }
 
   if (form.value.id) {
-    // UPDATE
     const { error } = await $supabase
       .from("departments")
       .update({
@@ -147,10 +198,9 @@ async function saveDepartment() {
       })
       .eq("id", form.value.id)
 
-    if (error) return showAlert("Failed to update department", "error")
-    showAlert("Department updated successfully!", "success")
+    if (error) return showAlert("Failed to update", "error")
+    showAlert("Updated successfully")
   } else {
-    // CREATE
     const { error } = await $supabase
       .from("departments")
       .insert({
@@ -159,42 +209,35 @@ async function saveDepartment() {
         normalized_key
       })
 
-    if (error) return showAlert("Failed to create department", "error")
-    showAlert("Department created successfully!", "success")
+    if (error) return showAlert("Failed to create", "error")
+    showAlert("Created successfully")
   }
 
   closeModal()
   loadDepartments()
 }
 
-// DELETE DEPARTMENT
-async function deleteDepartment(id) {
-  const { error } = await $supabase
-    .from("departments")
-    .delete()
-    .eq("id", id)
+function confirmDelete(dept) {
+  deleteTarget.value = dept
+  showDeleteDialog.value = true
+}
 
-  if (error) return showAlert("Failed to delete department", "error")
+async function deleteDepartmentNow() {
+  const response = await $fetch("/api/delete-department", {
+    method: "POST",
+    body: { department_id: deleteTarget.value.id }
+  })
 
-  showAlert("Department deleted successfully!", "success")
+  if (response.error) return showAlert(response.error, "error")
+
+  showAlert("Department deleted")
+  showDeleteDialog.value = false
   loadDepartments()
 }
-
-// EDIT
-function editDepartment(dept) {
-  form.value = { ...dept }
-  showCreateModal.value = true
-}
-
-// CLOSE MODAL
-function closeModal() {
-  showCreateModal.value = false
-  form.value = { id: null, name: "", type: "NORMAL" }
-}
-
-// ALERT
-function showAlert(msg, type) {
-  alertMessage.value = msg
-  alertType.value = type
-}
 </script>
+
+<style scoped>
+.text-grey {
+  color: #6b7280;
+}
+</style>
