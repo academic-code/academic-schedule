@@ -4,13 +4,32 @@
     <v-row align="center" justify="center" class="fill-height">
       <v-col cols="12" md="6" lg="4">
         <v-card elevation="12" class="pa-6 auth-card">
+
           <div class="text-center mb-6">
             <v-img src="/logo.png" max-width="110" class="mx-auto mb-2" />
             <h3 class="mb-1">Set a New Password</h3>
-            <div class="text-body-2 text-grey">Enter a new password to finish.</div>
+            <div class="text-body-2 text-grey">
+              Enter a new password to finish.
+            </div>
           </div>
 
-          <v-form ref="formRef" @submit.prevent="onReset" v-model="valid" lazy-validation>
+          <!-- TOKEN NOT FOUND / INVALID -->
+          <v-alert
+            v-if="!hasValidToken"
+            type="error"
+            class="mb-4"
+          >
+            Invalid or expired reset link. Please request a new one.
+          </v-alert>
+
+          <!-- PASSWORD FORM -->
+          <v-form
+            v-else
+            ref="formRef"
+            @submit.prevent="onReset"
+            v-model="valid"
+            lazy-validation
+          >
             <v-text-field
               v-model="password"
               :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
@@ -40,22 +59,22 @@
             <v-btn :loading="loading" type="submit" block large color="primary">
               Set Password
             </v-btn>
+
+            <v-alert
+              v-if="message"
+              :type="messageType"
+              class="mt-4"
+              dense
+              dismissible
+              @click:close="message = ''"
+            >
+              {{ message }}
+            </v-alert>
+
+            <div class="text-center mt-4">
+              <NuxtLink to="/login">Back to Login</NuxtLink>
+            </div>
           </v-form>
-
-          <v-alert
-            v-if="message"
-            :type="messageType"
-            class="mt-4"
-            dense
-            dismissible
-            @click:close="message = ''"
-          >
-            {{ message }}
-          </v-alert>
-
-          <div class="text-center mt-4">
-            <NuxtLink to="/login">Back to login</NuxtLink>
-          </div>
 
         </v-card>
       </v-col>
@@ -64,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSupabase } from '~/composables/useSupabase'
 
@@ -82,7 +101,9 @@ const showConfirm = ref(false)
 const loading = ref(false)
 const valid = ref(false)
 const message = ref('')
-const messageType = ref<'success' | 'error'>('success')
+const messageType = ref<'success'|'error'>('success')
+
+const hasValidToken = ref(false)
 
 const passwordRules = [
   (v: string) => !!v || 'Password is required',
@@ -93,6 +114,13 @@ const confirmRules = [
   (v: string) => !!v || 'Please confirm password',
   (v: string) => v === password.value || 'Passwords do not match'
 ]
+
+onMounted(() => {
+  const type = route.query.type
+  const token = route.query.access_token
+
+  hasValidToken.value = Boolean(type === 'recovery' && token)
+})
 
 async function onReset() {
   if (formRef.value && !(await formRef.value.validate())) return
@@ -107,7 +135,11 @@ async function onReset() {
 
     if (error) {
       messageType.value = "error"
-      message.value = error.message
+      message.value =
+        error.message.includes("expired")
+          ? "This reset link has expired. Please request a new one."
+          : error.message
+
       return
     }
 
@@ -115,7 +147,7 @@ async function onReset() {
     message.value = "Password updated. Redirecting..."
 
     setTimeout(() => router.push("/login"), 1200)
-    
+
   } catch (err: any) {
     messageType.value = "error"
     message.value = err?.message ?? "Something went wrong."

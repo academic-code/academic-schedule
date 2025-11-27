@@ -2,55 +2,38 @@
   <v-container class="d-flex justify-center align-center" style="height: 100vh;">
     <v-card width="420" class="pa-6">
 
-      <h2 class="text-h6 text-center mb-4">
-        Activate Your Account
-      </h2>
+      <h2 class="text-h6 text-center mb-4">Activate Your Account</h2>
 
-      <!-- Missing or invalid token -->
-      <v-alert
-        v-if="!hasValidToken"
-        type="error"
-        class="mb-4"
-      >
-        Invalid or missing activation link.
+      <!-- INVALID / EXPIRED TOKEN -->
+      <v-alert v-if="invalid" type="error" class="mb-4">
+        Invalid or expired activation link.
       </v-alert>
 
-      <!-- Password Setup Form -->
+      <!-- PASSWORD FORM -->
       <div v-else>
         <p class="text-body-2 mb-4">
-          Please create your password to complete your account activation.
+          Create your password to complete your account activation.
         </p>
 
         <v-text-field
           v-model="password"
-          label="New Password"
           type="password"
+          label="New Password"
           prepend-icon="mdi-lock"
-          class="mb-3"
         />
 
         <v-text-field
           v-model="confirmPassword"
-          label="Confirm Password"
           type="password"
+          label="Confirm Password"
           prepend-icon="mdi-lock-check"
-          class="mb-3"
         />
 
-        <v-alert
-          v-if="errorMessage"
-          type="error"
-          class="my-3"
-        >
+        <v-alert v-if="errorMessage" type="error" class="my-3">
           {{ errorMessage }}
         </v-alert>
 
-        <v-btn
-          color="primary"
-          block
-          :loading="loading"
-          @click="submitPassword"
-        >
+        <v-btn color="primary" block :loading="loading" @click="submitPassword">
           Set Password
         </v-btn>
       </div>
@@ -60,56 +43,94 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useSupabase } from '~/composables/useSupabase'
-import { loadUser, currentRole } from '~/composables/useUser'
+import { ref, onMounted } from "vue"
+import { useRoute, useRouter } from "vue-router"
+import { useSupabase } from "~/composables/useSupabase"
 
-const router = useRouter()
-const route = useRoute()
+definePageMeta({ layout: false })
+
 const supabase = useSupabase()
+const route = useRoute()
+const router = useRouter()
 
-// form
-const password = ref('')
-const confirmPassword = ref('')
-const errorMessage = ref('')
+const password = ref("")
+const confirmPassword = ref("")
 const loading = ref(false)
+const errorMessage = ref("")
+const invalid = ref(false)
 
-// tokens
-const token = ref<string | null>(null)
+function parseHashParams(hash: string): Record<string, string> {
+  // remove the "#"
+  const clean = hash.startsWith("#") ? hash.substring(1) : hash
+  return Object.fromEntries(new URLSearchParams(clean))
+}
+
+const accessToken = ref<string | null>(null)
+const refreshToken = ref<string | null>(null)
 const type = ref<string | null>(null)
-const hasValidToken = ref(false)
 
-// Load token from URL
-onMounted(() => {
-  token.value = (route.query.token as string) || null
+onMounted(async () => {
+  //
+  // 1️⃣ Try normal query params
+  //
+  accessToken.value =
+    (route.query.access_token as string) ||
+    (route.query.token as string) ||
+    null
+
+  refreshToken.value = (route.query.refresh_token as string) || null
   type.value = (route.query.type as string) || null
 
-  // Only allow invite or recovery tokens
-  if (token.value && (type.value === "invite" || type.value === "recovery")) {
-    hasValidToken.value = true
+  //
+  // 2️⃣ If empty → parse hash mode (#access_token=...)
+  //
+  if (!accessToken.value) {
+    const hashParams = parseHashParams(window.location.hash)
+
+    accessToken.value =
+      hashParams.access_token ||
+      hashParams.token ||
+      null
+
+    refreshToken.value = hashParams.refresh_token || null
+    type.value = hashParams.type || null
   }
-})
 
-/* ---------------------------------------------------------
-   SUBMIT PASSWORD
---------------------------------------------------------- */
-async function submitPassword() {
-  errorMessage.value = ''
-
-  if (!password.value || !confirmPassword.value) {
-    errorMessage.value = 'Both password fields are required.'
+  //
+  // 3️⃣ Still missing → invalid link
+  //
+  if (!accessToken.value || !type.value) {
+    invalid.value = true
     return
   }
 
+  //
+  // 4️⃣ Exchange the code for a real session
+  //
+  const { data, error } = await supabase.auth.exchangeCodeForSession(
+    String(accessToken.value)
+  )
+
+  if (error || !data.session) {
+    invalid.value = true
+    return
+  }
+})
+
+async function submitPassword() {
+  errorMessage.value = ""
+
+  if (!password.value || !confirmPassword.value) {
+    errorMessage.value = "Both passwords are required."
+    return
+  }
   if (password.value !== confirmPassword.value) {
-    errorMessage.value = 'Passwords do not match.'
+    errorMessage.value = "Passwords do not match."
     return
   }
 
   loading.value = true
 
-  // Step 1: Update password (Supabase reads token automatically)
   const { error } = await supabase.auth.updateUser({
     password: password.value
   })
@@ -120,29 +141,8 @@ async function submitPassword() {
     return
   }
 
-  // Step 2: Get email from query, login automatically
-  const email = route.query.email as string | undefined
-
-  if (email) {
-    await supabase.auth.signInWithPassword({
-      email,
-      password: password.value
-    })
-  }
-
-  // Step 3: Load user metadata to redirect properly
-  await loadUser()
-
-  if (currentRole.value === 'ADMIN')
-    return router.push('/admin/dashboard')
-
-  if (currentRole.value === 'DEAN')
-    return router.push('/dean/dashboard')
-
-  if (currentRole.value === 'FACULTY')
-    return router.push('/faculty/schedule')
-
-  // fallback
-  router.push('/login')
+  loading.value = false
+  router.push("/login")
 }
 </script>
+

@@ -7,7 +7,9 @@
           <div class="text-center mb-6">
             <v-img src="/logo.png" contain max-width="110" class="mx-auto mb-2" />
             <h3 class="mb-1">Forgot Password</h3>
-            <div class="text-body-2 text-grey">Enter your email and we’ll send a reset link.</div>
+            <div class="text-body-2 text-grey">
+              Enter your email and we’ll send a reset link.
+            </div>
           </div>
 
           <v-form ref="formRef" @submit.prevent="onSend" v-model="valid" lazy-validation>
@@ -54,6 +56,7 @@ import { useSupabase } from '~/composables/useSupabase'
 definePageMeta({ layout: false })
 
 const supabase = useSupabase()
+
 const formRef = ref()
 const email = ref('')
 const loading = ref(false)

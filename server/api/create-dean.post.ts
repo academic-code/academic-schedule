@@ -9,44 +9,45 @@ export default defineEventHandler(async (event) => {
     return { error: 'Missing required fields' }
   }
 
-  // Server-side Supabase (service role)
+  // Supabase Admin Client (service role)
   const supabase = createClient(
     process.env.NUXT_PUBLIC_SUPABASE_URL as string,
     process.env.SUPABASE_SERVICE_ROLE_KEY as string
   )
 
   /* -----------------------------------------------------
-      1. Check if an auth user already exists
+      1. Check if email already exists
   ----------------------------------------------------- */
   const { data: userList, error: listErr } = await supabase.auth.admin.listUsers()
-
   if (listErr) return { error: listErr.message }
 
-  const exists = userList.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
-  if (exists) return { error: "This email already exists." }
+  if (userList.users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
+    return { error: "Email already exists." }
+  }
 
   /* -----------------------------------------------------
-      2. Send invite
+      2. Create redirect link to welcome page
   ----------------------------------------------------- */
   const redirectUrl = `${process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/welcome`
 
+  /* -----------------------------------------------------
+      3. Send Supabase Invite Email
+  ----------------------------------------------------- */
   const { data: inviteData, error: inviteErr } =
     await supabase.auth.admin.inviteUserByEmail(email, {
+      redirectTo: redirectUrl,
       data: {
         role: "DEAN",
         department_id
-      },
-      redirectTo: redirectUrl
+      }
     })
 
-  if (inviteErr) {
-    return { error: "Invite failed: " + inviteErr.message }
-  }
+  if (inviteErr) return { error: `Invite failed: ${inviteErr.message}` }
 
-  const auth_user_id = inviteData.user?.id
+  const auth_user_id = inviteData?.user?.id
 
   /* -----------------------------------------------------
-      3. Insert into users table
+      4. Insert into users table
   ----------------------------------------------------- */
   const { data: userRow, error: userErr } = await supabase
     .from("users")
@@ -59,10 +60,10 @@ export default defineEventHandler(async (event) => {
     .select()
     .single()
 
-  if (userErr) return { error: "Failed to insert user: " + userErr.message }
+  if (userErr) return { error: userErr.message }
 
   /* -----------------------------------------------------
-      4. Insert into deans table
+      5. Insert dean row
   ----------------------------------------------------- */
   const { error: deanErr } = await supabase
     .from("deans")
@@ -71,7 +72,10 @@ export default defineEventHandler(async (event) => {
       department_id
     })
 
-  if (deanErr) return { error: "Failed to insert dean: " + deanErr.message }
+  if (deanErr) return { error: deanErr.message }
 
-  return { success: true }
+  return {
+    success: true,
+    message: "Dean created and invite sent."
+  }
 })

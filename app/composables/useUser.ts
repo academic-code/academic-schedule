@@ -1,16 +1,40 @@
+// /app/composables/useUser.ts
 import { ref } from 'vue'
-import { useSupabase } from '~/composables/useSupabase'
+import { useNuxtApp } from '#app'
 
+/* GLOBAL STATE */
 export const currentUser = ref<any | null>(null)
 export const currentRole = ref<string | null>(null)
 export const loadingUser = ref(false)
 
+/* Load session + user metadata */
 export async function loadUser() {
-  const supabase = useSupabase()
   loadingUser.value = true
 
   try {
-    const { data: { session } } = await supabase.auth.getSession()
+    // If running on server, skip — client will run loadUser later.
+    if (process.server) {
+      currentUser.value = null
+      currentRole.value = null
+      loadingUser.value = false
+      return
+    }
+
+    const nuxtApp = useNuxtApp()
+    // Supabase plugin exposes $supabase (client-only). Guard against missing plugin.
+    const supabase = (nuxtApp && (nuxtApp as any).$supabase) ?? null
+
+    if (!supabase) {
+      // no supabase available (plugin not initialized yet) — treat as not logged in
+      currentUser.value = null
+      currentRole.value = null
+      loadingUser.value = false
+      return
+    }
+
+    const {
+      data: { session }
+    } = await supabase.auth.getSession()
 
     if (!session) {
       currentUser.value = null
@@ -19,20 +43,32 @@ export async function loadUser() {
       return
     }
 
-    currentUser.value = session.user
-    currentRole.value = session.user.user_metadata?.role ?? null
+    // User Auth Object
+    const user = session.user
+
+    currentUser.value = user
+    currentRole.value = user.user_metadata?.role || null
   } catch (e) {
     console.error('loadUser error:', e)
     currentUser.value = null
     currentRole.value = null
+  } finally {
+    loadingUser.value = false
   }
-
-  loadingUser.value = false
 }
 
+/* Logout */
 export async function logoutUser() {
-  const supabase = useSupabase()
-  await supabase.auth.signOut()
+  // logout should only be called from client
+  if (process.server) return
+
+  const nuxtApp = useNuxtApp()
+  const supabase = (nuxtApp && (nuxtApp as any).$supabase) ?? null
+
+  if (supabase) {
+    await supabase.auth.signOut()
+  }
+
   currentUser.value = null
   currentRole.value = null
 }
