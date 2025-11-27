@@ -3,69 +3,99 @@ import { createServerClient } from '@supabase/ssr'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-
   const { email, full_name, department_id } = body
 
   if (!email || !full_name || !department_id) {
-    return { error: "Missing required fields." }
+    return { error: 'Missing required fields' }
   }
 
-  // ✔ Create a server-side Supabase client (safe for Nitro)
+  // Create server-side Supabase client
   const supabase = createServerClient(
-    process.env.SUPABASE_URL!,
+    process.env.NUXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       cookies: {
-        get() { return '' },
-        set() {},
-        remove() {}
+        get: () => "",
+        set: () => {},
+        remove: () => {}
       }
     }
   )
 
-  // 1️⃣ Create Auth User
-  const { data: authUser, error: authError } =
-    await supabase.auth.admin.createUser({
-      email,
-      email_confirm: false
-    })
+  // ==========================================
+  // 1) Check if email already exists
+  // ==========================================
+  const { data: list, error: listError } =
+    await supabase.auth.admin.listUsers()
 
-  if (authError) {
-    console.error(authError)
-    return { error: "Failed to create Auth user." }
+  if (listError) {
+    return { error: listError.message }
   }
 
-  const auth_id = authUser.user.id
+  const exists = list.users.find(
+    (u) => u.email?.toLowerCase() === email.toLowerCase()
+  )
 
-  // 2️⃣ Insert into public.users
-  const { data: newUser, error: userErr } = await supabase
-    .from('users')
+  if (exists) {
+    return { error: "This email already exists in the system." }
+  }
+
+  // ==========================================
+  // 2) Invite user (Sends email automatically)
+  // ==========================================
+  const { data: inviteData, error: inviteError } =
+    await supabase.auth.admin.inviteUserByEmail(email, {
+      data: {
+        role: "DEAN",
+        department_id
+      },
+      redirectTo: `${process.env.NUXT_PUBLIC_SITE_URL}/welcome`
+    })
+
+  if (inviteError) {
+    return { error: `Invite failed: ${inviteError.message}` }
+  }
+
+  const auth_user_id = inviteData?.user?.id ?? null
+
+  // ==========================================
+  // 3) Insert into users table
+  // ==========================================
+  const { data: userRow, error: userErr } = await supabase
+    .from("users")
     .insert({
-      auth_user_id: auth_id,
       email,
       full_name,
-      role: 'DEAN'
+      role: "DEAN",
+      auth_user_id
     })
     .select()
     .single()
 
   if (userErr) {
-    console.error(userErr)
-    return { error: "Failed to insert user record." }
+    return { error: `Failed to insert user: ${userErr.message}` }
   }
 
-  // 3️⃣ Insert into deans table
-  const { error: deanErr } = await supabase
-    .from('deans')
+  // ==========================================
+  // 4) Insert into deans table
+  // ==========================================
+  const { data: deanRow, error: deanErr } = await supabase
+    .from("deans")
     .insert({
-      user_id: newUser.id,
+      user_id: userRow.id,
       department_id
     })
+    .select()
+    .single()
 
   if (deanErr) {
-    console.error(deanErr)
-    return { error: "Failed to create dean entry." }
+    return { error: `Failed to insert dean: ${deanErr.message}` }
   }
 
-  return { success: true }
+  return {
+    success: true,
+    message: "Dean created successfully. Email invitation sent.",
+    dean: deanRow,
+    user: userRow
+  }
 })

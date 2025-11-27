@@ -19,42 +19,29 @@
       Add Dean
     </v-btn>
 
-    <!-- TABLE -->
+    <!-- DEANS TABLE -->
     <v-card>
-      <v-table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Department</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
+      <v-data-table
+        :headers="headers"
+        :items="deansData"
+        :loading="loading"
+      >
+        <template #item.actions="{ item }">
+          <v-btn icon size="small" @click="editDean(item)">
+            <v-icon>mdi-pencil</v-icon>
+          </v-btn>
 
-        <tbody>
-          <tr v-for="dean in deansData" :key="dean.id">
-            <td>{{ dean.full_name }}</td>
-            <td>{{ dean.email }}</td>
-            <td>{{ dean.department?.name }}</td>
-
-            <td>
-              <v-btn icon size="small" @click="editDean(dean)">
-                <v-icon>mdi-pencil</v-icon>
-              </v-btn>
-
-              <v-btn icon size="small" color="red" @click="deleteDean(dean.id)">
-                <v-icon>mdi-delete</v-icon>
-              </v-btn>
-            </td>
-          </tr>
-        </tbody>
-      </v-table>
+          <v-btn icon size="small" color="red" @click="confirmDelete(item)">
+            <v-icon>mdi-delete</v-icon>
+          </v-btn>
+        </template>
+      </v-data-table>
     </v-card>
 
-    <!-- MODAL -->
+    <!-- CREATE/EDIT MODAL -->
     <v-dialog v-model="showModal" max-width="600">
       <v-card>
-        <v-card-title>
+        <v-card-title class="text-h6">
           {{ form.id ? "Edit Dean" : "Create Dean" }}
         </v-card-title>
 
@@ -62,20 +49,21 @@
           <v-text-field
             v-model="form.full_name"
             label="Full Name"
-            class="mb-4"
+            class="mb-3"
           />
 
           <v-text-field
             v-model="form.email"
+            :disabled="form.id !== null"
             label="Email"
             type="email"
-            class="mb-4"
+            class="mb-3"
           />
 
           <v-select
             v-model="form.department_id"
-            label="Select Department"
-            :items="availableDepartments"
+            label="Department"
+            :items="departmentOptions"
             item-title="name"
             item-value="id"
           />
@@ -88,155 +76,199 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- DELETE CONFIRMATION -->
+    <v-dialog v-model="showDeleteDialog" max-width="450">
+      <v-card>
+        <v-card-title class="text-h6">Delete Dean?</v-card-title>
+
+        <v-card-text>
+          This dean will be <strong>permanently removed</strong> including:
+          <ul>
+            <li>schedules</li>
+            <li>schedule periods</li>
+            <li>faculty</li>
+            <li>subjects</li>
+            <li>classes</li>
+            <li>user account</li>
+            <li>Supabase Auth account</li>
+          </ul>
+          <strong>This action cannot be undone.</strong>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer />
+          <v-btn @click="showDeleteDialog = false">Cancel</v-btn>
+          <v-btn color="red" @click="deleteDeanNow">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from "vue";
-import { useNuxtApp } from "#app";
+import { ref, onMounted, computed } from "vue"
+import { useNuxtApp } from "#app"
 
-definePageMeta({
-  layout: "admin",
-});
+definePageMeta({ layout: "admin" })
 
-const { $supabase } = useNuxtApp();
+const { $supabase } = useNuxtApp()
 
-// STATE
-const deansData = ref([]);
-const departments = ref([]);
-const showModal = ref(false);
+// UI States
+const loading = ref(false)
+const deansData = ref([])
+const departments = ref([])
 
+const showModal = ref(false)
+const showDeleteDialog = ref(false)
+const deleteInfo = ref(null)
+
+// Alerts
+const alertMessage = ref("")
+const alertType = ref("success")
+
+function showAlert(message, type = "success") {
+  alertMessage.value = message
+  alertType.value = type
+}
+
+// Form model
 const form = ref({
   id: null,
-  email: "",
   full_name: "",
+  email: "",
   department_id: null,
-});
+  user_id: null,
+  auth_user_id: null,
+})
 
-// ALERTS
-const alertMessage = ref("");
-const alertType = ref("success");
+// Data table headers
+const headers = [
+  { title: "Name", key: "full_name" },
+  { title: "Email", key: "email" },
+  { title: "Department", key: "department_name" },
+  { title: "Actions", key: "actions", sortable: false },
+]
 
-function showAlert(msg, type = "success") {
-  alertMessage.value = msg;
-  alertType.value = type;
-}
-
-// LOAD DATA
+// Load data
 onMounted(() => {
-  loadDeans();
-  loadDepartments();
-});
+  loadData()
+})
 
-// LOAD DEPARTMENTS
-async function loadDepartments() {
-  const { data, error } = await $supabase.from("departments").select("*");
-
-  if (error) return showAlert("Failed to load departments", "error");
-
-  departments.value = data;
+async function loadData() {
+  loading.value = true
+  await loadDepartments()
+  await loadDeans()
+  loading.value = false
 }
 
-// LOAD DEANS WITH JOINS
+// Load departments
+async function loadDepartments() {
+  const { data } = await $supabase.from("departments").select("*")
+  departments.value = data || []
+}
+
+const departmentOptions = computed(() => departments.value)
+
+// Load deans with join
 async function loadDeans() {
   const { data, error } = await $supabase
     .from("deans")
-    .select("id, user:users(*), department:departments(*)");
+    .select("id, department_id, user:users(*), department:departments(*)")
 
-  if (error) return showAlert("Failed to load deans", "error");
+  if (error) {
+    return showAlert("Error loading deans", "error")
+  }
 
   deansData.value = data.map((d) => ({
     id: d.id,
-    email: d.user.email,
-    full_name: d.user.full_name,
-    department: d.department,
-    department_id: d.department?.id,
+    full_name: d.user?.full_name,
+    email: d.user?.email,
     user_id: d.user?.id,
-  }));
+    auth_user_id: d.user?.auth_user_id,
+    department_name: d.department?.name,
+    department_id: d.department_id,
+  }))
 }
 
-// FILTER DEPARTMENTS WITHOUT A DEAN
-const availableDepartments = computed(() => {
-  return departments.value.filter((dept) => {
-    return !deansData.value.some(
-      (dean) => dean.department_id === dept.id
-    );
-  });
-});
-
-// CREATE / EDIT MODAL
+// Open create modal
 function openCreateModal() {
   form.value = {
     id: null,
-    email: "",
     full_name: "",
+    email: "",
     department_id: null,
-  };
-  showModal.value = true;
+  }
+  showModal.value = true
 }
 
 function editDean(dean) {
-  form.value = {
-    id: dean.id,
-    email: dean.email,
-    full_name: dean.full_name,
-    department_id: dean.department_id,
-  };
-  showModal.value = true;
-}
-
-// SAVE DEAN (CREATE)
-async function saveDean() {
-  if (!form.value.email || !form.value.full_name || !form.value.department_id) {
-    return showAlert("All fields are required!", "error");
-  }
-
-  // Prevent duplicate dean for same department
-  if (
-    deansData.value.some(
-      (d) =>
-        d.department_id === form.value.department_id &&
-        d.id !== form.value.id
-    )
-  ) {
-    return showAlert("This department already has a dean!", "error");
-  }
-
-  // CREATE dean via server API
-  if (!form.value.id) {
-    const response = await $fetch("/api/create-dean", {
-      method: "POST",
-      body: {
-        email: form.value.email,
-        full_name: form.value.full_name,
-        department_id: form.value.department_id,
-      },
-    });
-
-    if (response.error) {
-      return showAlert(response.error, "error");
-    }
-
-    showAlert("Dean created successfully!", "success");
-    closeModal();
-    return loadDeans();
-  }
-
-  // UPDATE dean — optional (we can add this later)
-  showAlert("Dean editing will be added soon.", "info");
-}
-
-async function deleteDean(id) {
-  const { error } = await $supabase.from("deans").delete().eq("id", id);
-
-  if (error) return showAlert("Failed to delete dean", "error");
-
-  showAlert("Dean deleted successfully!", "success");
-  loadDeans();
+  form.value = { ...dean }
+  showModal.value = true
 }
 
 function closeModal() {
-  showModal.value = false;
+  showModal.value = false
+  form.value = {
+    id: null,
+    full_name: "",
+    email: "",
+    department_id: null,
+  }
+}
+
+// Save dean
+async function saveDean() {
+  if (!form.value.email || !form.value.full_name || !form.value.department_id) {
+    return showAlert("All fields are required", "error")
+  }
+
+  if (form.value.id === null) {
+    // CREATE
+    const response = await $fetch("/api/create-dean", {
+      method: "POST",
+      body: form.value,
+    })
+
+    if (response.error) {
+      return showAlert(response.error, "error")
+    }
+
+    showAlert("Dean created successfully!", "success")
+  } else {
+    // Update is optional, not required in your project.
+    showAlert("Dean editing not supported yet.", "info")
+  }
+
+  closeModal()
+  loadDeans()
+}
+
+// Delete dean
+function confirmDelete(dean) {
+  deleteInfo.value = dean
+  showDeleteDialog.value = true
+}
+
+async function deleteDeanNow() {
+  const dean = deleteInfo.value
+
+  const response = await $fetch("/api/delete-dean", {
+    method: "POST",
+    body: {
+      dean_id: dean.id,
+      user_table_id: dean.user_id,
+      auth_user_id: dean.auth_user_id,
+    },
+  })
+
+  if (response.error) {
+    return showAlert(response.error, "error")
+  }
+
+  showDeleteDialog.value = false
+  showAlert("Dean deleted successfully!", "success")
+  loadDeans()
 }
 </script>
 
