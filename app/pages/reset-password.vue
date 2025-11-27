@@ -4,7 +4,6 @@
     <v-row align="center" justify="center" class="fill-height">
       <v-col cols="12" md="6" lg="4">
         <v-card elevation="12" class="pa-6 auth-card">
-
           <div class="text-center mb-6">
             <v-img src="/logo.png" max-width="110" class="mx-auto mb-2" />
             <h3 class="mb-1">Set a New Password</h3>
@@ -13,18 +12,17 @@
             </div>
           </div>
 
-          <!-- TOKEN NOT FOUND / INVALID -->
           <v-alert
-            v-if="!hasValidToken"
+            v-if="tokenMissing"
             type="error"
             class="mb-4"
+            dense
           >
-            Invalid or expired reset link. Please request a new one.
+            Invalid or expired reset link.
           </v-alert>
 
-          <!-- PASSWORD FORM -->
           <v-form
-            v-else
+            v-if="!tokenMissing"
             ref="formRef"
             @submit.prevent="onReset"
             v-model="valid"
@@ -56,7 +54,13 @@
               dense
             />
 
-            <v-btn :loading="loading" type="submit" block large color="primary">
+            <v-btn
+              :loading="loading"
+              type="submit"
+              block
+              large
+              color="primary"
+            >
               Set Password
             </v-btn>
 
@@ -70,11 +74,11 @@
             >
               {{ message }}
             </v-alert>
-
-            <div class="text-center mt-4">
-              <NuxtLink to="/login">Back to Login</NuxtLink>
-            </div>
           </v-form>
+
+          <div class="text-center mt-4">
+            <NuxtLink to="/login">Back to login</NuxtLink>
+          </div>
 
         </v-card>
       </v-col>
@@ -83,47 +87,81 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useSupabase } from '~/composables/useSupabase'
+import { ref, onMounted } from "vue"
+import { useRouter } from "vue-router"
+import { useSupabase } from "~/composables/useSupabase"
 
 definePageMeta({ layout: false })
 
 const supabase = useSupabase()
-const route = useRoute()
 const router = useRouter()
 
 const formRef = ref()
-const password = ref('')
-const confirm = ref('')
+const password = ref("")
+const confirm = ref("")
 const showPassword = ref(false)
 const showConfirm = ref(false)
 const loading = ref(false)
 const valid = ref(false)
-const message = ref('')
-const messageType = ref<'success'|'error'>('success')
+const message = ref("")
+const messageType = ref<"success" | "error">("error")
 
-const hasValidToken = ref(false)
+const tokenMissing = ref(false)
+
+/* TOKEN EXTRACTOR — TS SAFE FIX */
+function extractToken(): string | null {
+  const search = new URLSearchParams(window.location.search)
+
+  const q1 = search.get("access_token")
+  if (q1 !== null) return q1
+
+  const q2 = search.get("token")
+  if (q2 !== null) return q2
+
+  const hash = window.location.hash || ""
+
+  if (hash.includes("access_token=")) {
+    const val = hash.split("access_token=")[1]?.split("&")[0]
+    return val ?? null
+  }
+
+  if (hash.includes("token=")) {
+    const val = hash.split("token=")[1]?.split("&")[0]
+    return val ?? null
+  }
+
+  return null
+}
+
+const token = ref<string | null>(null)
+
+onMounted(() => {
+  token.value = extractToken()
+
+  if (!token.value) {
+    tokenMissing.value = true
+    messageType.value = "error"
+    message.value = "Invalid or expired reset link."
+  }
+})
 
 const passwordRules = [
-  (v: string) => !!v || 'Password is required',
-  (v: string) => (v?.length ?? 0) >= 8 || 'Min 8 characters'
+  (v: string) => !!v || "Password is required",
+  (v: string) => (v?.length ?? 0) >= 8 || "Min 8 characters"
 ]
 
 const confirmRules = [
-  (v: string) => !!v || 'Please confirm password',
-  (v: string) => v === password.value || 'Passwords do not match'
+  (v: string) => !!v || "Please confirm password",
+  (v: string) => v === password.value || "Passwords do not match"
 ]
-
-onMounted(() => {
-  const type = route.query.type
-  const token = route.query.access_token
-
-  hasValidToken.value = Boolean(type === 'recovery' && token)
-})
 
 async function onReset() {
   if (formRef.value && !(await formRef.value.validate())) return
+
+  if (!token.value) {
+    tokenMissing.value = true
+    return
+  }
 
   loading.value = true
   message.value = ""
@@ -135,32 +173,33 @@ async function onReset() {
 
     if (error) {
       messageType.value = "error"
-      message.value =
-        error.message.includes("expired")
-          ? "This reset link has expired. Please request a new one."
-          : error.message
-
+      message.value = error.message
+      loading.value = false
       return
     }
 
     messageType.value = "success"
-    message.value = "Password updated. Redirecting..."
+    message.value = "Password updated! Redirecting..."
 
     setTimeout(() => router.push("/login"), 1200)
-
   } catch (err: any) {
     messageType.value = "error"
     message.value = err?.message ?? "Something went wrong."
-  } finally {
-    loading.value = false
   }
+
+  loading.value = false
 }
 </script>
 
+
 <style scoped>
-.page-hero { position: relative; min-height: 100vh; }
+.page-hero {
+  position: relative;
+  min-height: 100vh;
+}
 .hero-gradient {
-  position: absolute; inset: 0;
+  position: absolute;
+  inset: 0;
   background: linear-gradient(135deg, #f7fbff 0%, #e3f0ff 45%, #fefefe 100%);
   z-index: 0;
 }
@@ -169,5 +208,7 @@ async function onReset() {
   border-radius: 12px;
   backdrop-filter: blur(6px);
 }
-.text-grey { color: #6b7280; }
+.text-grey {
+  color: #6b7280;
+}
 </style>
