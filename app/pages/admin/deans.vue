@@ -29,7 +29,7 @@
       Add Dean
     </v-btn>
 
-    <!-- DEANS TABLE -->
+    <!-- TABLE -->
     <v-card>
       <v-data-table
         :headers="headers"
@@ -70,13 +70,34 @@
             class="mb-3"
           />
 
+          <!-- FINAL FIXED DROPDOWN — NO DUPLICATES -->
           <v-select
             v-model="form.department_id"
             label="Department"
             :items="departmentOptions"
-            item-title="name"
+            item-title="label"
             item-value="id"
-          />
+            :item-disabled="item => item.disabled"
+            :return-object="false"
+          >
+            <!-- ITEM TEMPLATE -->
+            <template #item="{ item, props }">
+              <v-list-item v-bind="props">
+                <v-list-item-title>
+                  {{ item.raw.label }}
+                  <v-chip
+                    v-if="item.raw.assigned"
+                    size="x-small"
+                    color="red"
+                    class="ml-2"
+                    label
+                  >
+                    Assigned
+                  </v-chip>
+                </v-list-item-title>
+              </v-list-item>
+            </template>
+          </v-select>
         </v-card-text>
 
         <v-card-actions>
@@ -117,33 +138,31 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from "vue"
-import { useSupabase } from "~/composables/useSupabase"
+import { ref, onMounted, computed } from "vue";
+import { useSupabase } from "~/composables/useSupabase";
 
-definePageMeta({ layout: "admin" })
+definePageMeta({ layout: "admin" });
 
-const supabase = useSupabase()
+const supabase = useSupabase();
 
-// STATE
-const loading = ref(false)
-const search = ref("")
-const deansData = ref([])
-const departments = ref([])
+const loading = ref(false);
+const search = ref("");
+const deansData = ref([]);
+const departments = ref([]);
 
-const showModal = ref(false)
-const showDeleteDialog = ref(false)
-const deleteInfo = ref(null)
+const showModal = ref(false);
+const showDeleteDialog = ref(false);
+const deleteInfo = ref(null);
 
-const alertMessage = ref("")
-const alertType = ref("success")
+const alertMessage = ref("");
+const alertType = ref("success");
 
 function showAlert(message, type = "success") {
-  alertMessage.value = message
-  alertType.value = type
-  setTimeout(() => (alertMessage.value = ""), 2000)
+  alertMessage.value = message;
+  alertType.value = type;
+  setTimeout(() => (alertMessage.value = ""), 2000);
 }
 
-// FORM
 const form = ref({
   id: null,
   full_name: "",
@@ -151,44 +170,35 @@ const form = ref({
   department_id: null,
   user_id: null,
   auth_user_id: null,
-})
+});
 
-// HEADERS
 const headers = [
   { title: "Name", key: "full_name" },
   { title: "Email", key: "email" },
   { title: "Department", key: "department_name" },
   { title: "Actions", key: "actions", sortable: false },
-]
+];
 
-// LOAD DATA
-onMounted(() => {
-  loadData()
-})
+onMounted(() => loadData());
 
 async function loadData() {
-  loading.value = true
-  await loadDepartments()
-  await loadDeans()
-  loading.value = false
+  loading.value = true;
+  await loadDepartments();
+  await loadDeans();
+  loading.value = false;
 }
 
 async function loadDepartments() {
-  const { data } = await supabase.from("departments").select("*").order("name")
-  departments.value = data || []
+  const { data } = await supabase.from("departments").select("*").order("name");
+  departments.value = data || [];
 }
 
-const departmentOptions = computed(() => departments.value)
-
 async function loadDeans() {
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("deans")
-    .select("id, department_id, user:users(*), department:departments(*)")
+    .select("id, department_id, user:users(*), department:departments(*)");
 
-  if (error) {
-    showAlert("Error loading deans", "error")
-    return
-  }
+  if (!data) return;
 
   deansData.value = data.map((d) => ({
     id: d.id,
@@ -198,109 +208,126 @@ async function loadDeans() {
     auth_user_id: d.user?.auth_user_id,
     department_name: d.department?.name,
     department_id: d.department_id,
-  }))
+  }));
 }
 
-// FILTERED SEARCH
+// FINAL CLEAN OPTIONS
+const departmentOptions = computed(() => {
+  const assigned = new Set(deansData.value.map((d) => d.department_id));
+
+  return departments.value.map((dep) => ({
+    id: dep.id,
+    label: dep.name,
+    assigned: assigned.has(dep.id),
+    disabled: assigned.has(dep.id) && dep.id !== form.value.department_id,
+  }));
+});
+
+// SEARCH FILTER
 const filteredDeans = computed(() => {
-  if (!search.value) return deansData.value
+  if (!search.value) return deansData.value;
   return deansData.value.filter((d) =>
     `${d.full_name} ${d.email}`
       .toLowerCase()
       .includes(search.value.toLowerCase())
-  )
-})
+  );
+});
 
-// MODAL HANDLERS
+// CREATE
 function openCreateModal() {
   form.value = {
     id: null,
     full_name: "",
     email: "",
     department_id: null,
-  }
-  showModal.value = true
+  };
+  showModal.value = true;
 }
 
+// EDIT
 function editDean(dean) {
-  form.value = { ...dean }
-  showModal.value = true
+  form.value = { ...dean };
+  showModal.value = true;
 }
 
+// CLOSE
 function closeModal() {
-  showModal.value = false
+  showModal.value = false;
   form.value = {
     id: null,
     full_name: "",
     email: "",
     department_id: null,
-  }
+  };
 }
 
-// SAVE DEAN
+// SAVE
 async function saveDean() {
   if (!form.value.full_name || !form.value.email || !form.value.department_id) {
-    return showAlert("All fields are required", "error")
+    return showAlert("All fields are required", "error");
   }
 
-  // DUPLICATE CHECK
+  // VALIDATE – Only one dean per department
+  const { data: deptDean } = await supabase
+    .from("deans")
+    .select("id")
+    .eq("department_id", form.value.department_id)
+    .limit(1);
+
+  if (deptDean?.length > 0 && form.value.id === null) {
+    return showAlert("This department already has a dean!", "error");
+  }
+
   if (form.value.id === null) {
+    // EMAIL CHECK
     const { data: existing } = await supabase
       .from("users")
       .select("email")
       .eq("email", form.value.email)
-      .limit(1)
+      .limit(1);
 
     if (existing?.length) {
-      return showAlert("Email already used", "error")
+      return showAlert("Email already used", "error");
     }
-  }
 
-  if (form.value.id === null) {
-    // CREATE
     const response = await $fetch("/api/create-dean", {
       method: "POST",
       body: form.value,
-    })
+    });
 
-    if (response.error) return showAlert(response.error, "error")
+    if (response.error) return showAlert(response.error, "error");
 
-    showAlert("Dean created successfully!", "success")
+    showAlert("Dean created successfully!", "success");
   } else {
-    // UPDATE DEAN
     const { error } = await supabase
       .from("users")
-      .update({
-        full_name: form.value.full_name,
-      })
-      .eq("id", form.value.user_id)
+      .update({ full_name: form.value.full_name })
+      .eq("id", form.value.user_id);
 
-    if (error) return showAlert("Failed to update dean", "error")
+    if (error) return showAlert("Failed to update dean", "error");
 
-    const { error: deanError } = await supabase
+    const { error: deanErr } = await supabase
       .from("deans")
-      .update({
-        department_id: form.value.department_id,
-      })
-      .eq("id", form.value.id)
+      .update({ department_id: form.value.department_id })
+      .eq("id", form.value.id);
 
-    if (deanError) return showAlert("Failed to update dean", "error")
+    if (deanErr) return showAlert("Failed to update dean", "error");
 
-    showAlert("Dean updated successfully", "success")
+    showAlert("Dean updated successfully!", "success");
   }
 
-  closeModal()
-  loadDeans()
+  closeModal();
+  loadDeans();
 }
 
 // DELETE
 function confirmDelete(dean) {
-  deleteInfo.value = dean
-  showDeleteDialog.value = true
+  deleteInfo.value = dean;
+  showDeleteDialog.value = true;
 }
 
 async function deleteDeanNow() {
-  const dean = deleteInfo.value
+  const dean = deleteInfo.value;
 
   const response = await $fetch("/api/delete-dean", {
     method: "POST",
@@ -309,16 +336,15 @@ async function deleteDeanNow() {
       user_table_id: dean.user_id,
       auth_user_id: dean.auth_user_id,
     },
-  })
+  });
 
-  if (response.error) return showAlert(response.error, "error")
+  if (response.error) return showAlert(response.error, "error");
 
-  showAlert("Dean deleted successfully!", "success")
-  showDeleteDialog.value = false
-  loadDeans()
+  showAlert("Dean deleted successfully!", "success");
+  showDeleteDialog.value = false;
+  loadDeans();
 }
 </script>
-
 
 <style scoped>
 .nav-active {
