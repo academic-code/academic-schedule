@@ -1,6 +1,13 @@
 <template>
   <div>
-    <h2 class="text-h5 mb-6">Admin Dashboard</h2>
+    <h2 class="text-h5 mb-2">Admin Dashboard</h2>
+
+    <!-- PROFILE INFO -->
+    <div class="mb-6 text-body-2 text-grey-darken-1">
+      Logged in as:
+      <strong>{{ currentUser?.email }}</strong>
+      ({{ currentRole }})
+    </div>
 
     <!-- STAT CARDS -->
     <v-row dense>
@@ -41,7 +48,7 @@
       </v-col>
     </v-row>
 
-    <!-- OPTIONAL: FUTURE AREA FOR GRAPHS -->
+    <!-- FUTURE CONTENT -->
     <v-row class="mt-6">
       <v-col cols="12">
         <v-card elevation="2" class="pa-4">
@@ -56,43 +63,51 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
-import { useNuxtApp } from "#app";
+import { ref, onMounted } from "vue"
+import { useSupabase } from "~/composables/useSupabase"
+import { currentUser, currentRole } from "~/composables/useUser"
 
 definePageMeta({
   layout: "admin"
-});
+})
 
-const { $supabase } = useNuxtApp();
+const supabase = useSupabase()
 
-// Counts
-const totalDepartments = ref(0);
-const totalDeans = ref(0);
-const totalFaculty = ref(0);
+// COUNT STATE
+const totalDepartments = ref(0)
+const totalDeans = ref(0)
+const totalFaculty = ref(0)
 
 onMounted(() => {
-  loadCounts();
-});
+  loadCounts()
+})
 
-// Load dashboard metrics
+// LOAD METRICS
 async function loadCounts() {
   // Departments
-  const { data: deptData } = await $supabase
+  const { data: deptData } = await supabase
     .from("departments")
-    .select("id", { count: "exact" });
-  totalDepartments.value = deptData?.length || 0;
+    .select("id", { count: "exact" })
+  totalDepartments.value = deptData?.length || 0
 
   // Deans
-  const { data: deanData } = await $supabase
+  const { data: deanData } = await supabase
     .from("deans")
-    .select("id", { count: "exact" });
-  totalDeans.value = deanData?.length || 0;
+    .select("id", { count: "exact" })
+  totalDeans.value = deanData?.length || 0
 
-  // Faculty (excluding deans)
-  const { data: facultyData } = await $supabase
+  // Faculty (non-deans)
+  const { data: facultyData } = await supabase
     .from("users")
     .select("id")
-    .eq("role", "FACULTY");
-  totalFaculty.value = facultyData?.length || 0;
+    .eq("role", "FACULTY")
+
+  totalFaculty.value = facultyData?.length || 0
 }
 </script>
+
+<style scoped>
+.text-grey-darken-1 {
+  color: #555;
+}
+</style>

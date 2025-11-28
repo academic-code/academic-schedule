@@ -3,8 +3,8 @@
     <v-card width="420" elevation="4" class="pa-6">
 
       <div class="text-center mb-6">
-        <v-img src="/Logo.png" width="80" class="mx-auto mb-2" />
-        <h2 class="text-h5">Academic Scheduler</h2>
+        <v-img src="/Logo.png" max-width="300" class="mx-auto mb-2" />
+        <h2 class="text-h5">Welcome Deans</h2>
       </div>
 
       <!-- ALERT -->

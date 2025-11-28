@@ -9,7 +9,7 @@
       color="white"
     >
       <div class="pa-4 d-flex justify-center">
-        <v-img src="/logo.png" width="60" />
+        <v-img src="/Logo.png" width="60" />
       </div>
 
       <v-list nav density="compact">
@@ -37,6 +37,7 @@
         Admin Panel
       </div>
 
+      <!-- PROFILE / LOGOUT MENU -->
       <v-menu>
         <template #activator="{ props }">
           <v-btn icon variant="text" v-bind="props">
@@ -45,6 +46,16 @@
         </template>
 
         <v-list>
+          <v-list-item>
+            <v-list-item-title class="text-caption">
+              {{ currentUser?.email }}
+              <br />
+              ({{ currentRole }})
+            </v-list-item-title>
+          </v-list-item>
+
+          <v-divider />
+
           <v-list-item @click="logout">
             <v-list-item-title>Logout</v-list-item-title>
           </v-list-item>
@@ -64,8 +75,9 @@
 <script setup>
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-const router = useRouter();
+import { logoutUser, currentUser, currentRole } from "~/composables/useUser";
 
+const router = useRouter();
 const drawer = ref(true);
 
 const menu = [
@@ -74,8 +86,9 @@ const menu = [
   { label: "Deans", to: "/admin/deans", icon: "mdi-account-tie" },
 ];
 
-function logout() {
-  console.log("TODO: Admin logout");
+async function logout() {
+  await logoutUser();
+  router.push("/login");
 }
 </script>
 
