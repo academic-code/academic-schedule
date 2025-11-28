@@ -25,7 +25,7 @@
 
       <v-list nav density="compact">
         <v-list-item
-          v-for="item in menu"
+          v-for="item in visibleMenu"
           :key="item.to"
           :to="item.to"
           :prepend-icon="item.icon"
@@ -78,7 +78,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useSupabase } from "~/composables/useSupabase";
 import { currentUser, currentRole, loadUser, logoutUser } from "~/composables/useUser";
@@ -87,49 +87,82 @@ const router = useRouter();
 const supabase = useSupabase();
 
 const drawer = ref(true);
-
 const userEmail = ref("");
 const userRole = ref("DEAN");
 const departmentName = ref("Loading...");
+const departmentType = ref("NORMAL"); // "NORMAL" or "GENED"
 
-// Sidebar menu items
+// MASTER MENU (Filters dynamically based on department type)
 const menu = [
-  { label: "Dashboard", to: "/dean/dashboard", icon: "mdi-view-dashboard" },
-  { label: "Faculty", to: "/dean/faculty", icon: "mdi-account-tie" },
-  { label: "Classes", to: "/dean/classes", icon: "mdi-account-group" },
-  { label: "Subjects", to: "/dean/subjects", icon: "mdi-book-open-variant" },
-  { label: "Schedules", to: "/dean/schedule-builder", icon: "mdi-calendar-clock" },
-  { label: "Generate Periods", to: "/dean/generate-periods", icon: "mdi-timer-cog" },
-  { label: "Upload Subjects CSV", to: "/dean/subjects-upload", icon: "mdi-file-upload" },
+  { label: "Dashboard", to: "/dean/dashboard", icon: "mdi-view-dashboard", all: true },
+  { label: "Faculty", to: "/dean/faculty", icon: "mdi-account-tie", gened: false },
+  { label: "Classes", to: "/dean/classes", icon: "mdi-account-group", gened: false },
+  { label: "Subjects", to: "/dean/subjects", icon: "mdi-book-open-variant", gened: false },
+  { label: "GenEd Subjects", to: "/dean/gened-subjects", icon: "mdi-book-education", gened: true },
+  { label: "Schedules", to: "/dean/schedule-builder", icon: "mdi-calendar-clock", gened: false },
+  { label: "Generate Periods", to: "/dean/generate-periods", icon: "mdi-timer-cog", all: true },
+  { label: "Upload Subjects CSV", to: "/dean/subjects-upload", icon: "mdi-file-upload", gened: false },
 ];
+
+// Visible menu depends on department type
+const visibleMenu = computed(() => {
+  if (departmentType.value === "GENED") {
+    // GENED DEAN SEES ONLY GENED-SUBJECTS, DASHBOARD, PERIODS
+    return menu.filter((m) => m.gened === true || m.all === true);
+  } else {
+    // NORMAL DEAN SEES ALL NON-GENED MENUS
+    return menu.filter((m) => m.gened !== true);
+  }
+});
 
 onMounted(async () => {
   await loadUser();
 
-  // Protect layout: only DEAN should access
+  // PROTECT LAYOUT
   if (!currentUser.value || currentRole.value !== "DEAN") {
     return router.push("/login");
   }
 
   userEmail.value = currentUser.value.email || "";
-  userRole.value = "DEAN";
 
+  // Load department information
   const departmentId = currentUser.value?.user_metadata?.department_id;
 
   if (departmentId) {
     const { data } = await supabase
       .from("departments")
-      .select("name")
+      .select("name, type")
       .eq("id", departmentId)
       .single();
 
     departmentName.value = data?.name || "Department";
+    departmentType.value = data?.type || "NORMAL";
+
+    const currentPath = router.currentRoute.value.path;
+
+    // ------------------------------------------------
+    // AUTO-REDIRECT BASED ON DEPARTMENT TYPE
+    // ------------------------------------------------
+    if (departmentType.value === "GENED") {
+      // Redirect any dean page to gened subjects
+      if (currentPath !== "/dean/gened-subjects") {
+        return router.replace("/dean/gened-subjects");
+      }
+    } else {
+      // NORMAL DEAN
+      if (currentPath === "/dean" || currentPath === "/dean/") {
+        return router.replace("/dean/subjects");
+      }
+      if (currentPath === "/dean/gened-subjects") {
+        return router.replace("/dean/subjects");
+      }
+    }
   }
 });
 
-// LOGOUT FUNCTION
+// LOGOUT
 async function logoutNow() {
-  await logoutUser(); // Clears Supabase session + composable state
+  await logoutUser();
   router.push("/login");
 }
 </script>

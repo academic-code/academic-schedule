@@ -86,10 +86,6 @@
           {{ item.lec + item.lab }}
         </template>
 
-        <template #item.department_name="{ item }">
-          {{ item.department_name }}
-        </template>
-
         <template #item.actions="{ item }">
           <v-btn icon size="small" @click="editSubject(item)">
             <v-icon>mdi-pencil</v-icon>
@@ -150,7 +146,7 @@
               />
             </v-col>
 
-            <!-- LOCKED DEPARTMENT IN EDIT -->
+            <!-- LOCKED FOR EDIT MODE -->
             <v-col cols="12" md="4">
               <v-select
                 v-model="form.department_id"
@@ -219,11 +215,10 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
 import { useSupabase } from "~/composables/useSupabase";
-import { loadUser, currentUser } from "~/composables/useUser";
+import { loadUser } from "~/composables/useUser";
 
 definePageMeta({ layout: "dean" });
 
-/* state */
 const supabase = useSupabase();
 const loading = ref(false);
 const saving = ref(false);
@@ -251,7 +246,7 @@ const filterYear = ref("ALL");
 const filterSemester = ref("ALL");
 const search = ref("");
 
-/* FORM MODEL */
+/* FORM */
 const form = ref({
   id: null,
   course_code: "",
@@ -267,6 +262,23 @@ const form = ref({
 });
 
 const isEditMode = computed(() => !!form.value.id);
+
+/* HEADERS (FIXED per your request) */
+const headers = [
+  { title: "Course Code", key: "course_code" },
+  { title: "Description", key: "description" },
+  { title: "Lec", key: "lec" },
+  { title: "Lab", key: "lab" },
+  {
+    title: "Units",
+    key: "units",
+  },
+  {
+    title: "Actions",
+    key: "actions",
+    sortable: false,
+  },
+];
 
 /* OPTIONS */
 const yearLevelLabel = {
@@ -314,7 +326,6 @@ onMounted(async () => {
 
 watch([filterDept, filterYear, filterSemester, search], loadSubjects);
 
-/* FUNCTIONS */
 async function loadDepartments() {
   const { data } = await supabase.from("departments").select("id,name").order("name");
   departments.value = data || [];
@@ -344,14 +355,10 @@ async function loadSubjects() {
 
   const { data } = await q.order("course_code");
 
-  const deptMap = new Map(departments.value.map((d) => [d.id, d.name]));
-
-  subjects.value =
-    data?.map((s) => ({
-      ...s,
-      units: Number(s.lec || 0) + Number(s.lab || 0),
-      department_name: deptMap.get(s.department_id) || "",
-    })) || [];
+  subjects.value = data?.map((s) => ({
+    ...s,
+    units: Number(s.lec || 0) + Number(s.lab || 0),
+  })) || [];
 
   if (search.value.trim()) {
     const term = search.value.toLowerCase();
@@ -403,10 +410,11 @@ function handlePrereq(v) {
   if (v.includes("NONE")) form.value.prerequisites = ["NONE"];
 }
 
-const computedUnits = computed(
-  () => Number(form.value.lec || 0) + Number(form.value.lab || 0)
-);
+const computedUnits = computed(() => Number(form.value.lec || 0) + Number(form.value.lab || 0));
 
+/* ================================
+   🚀 SAVE SUBJECT (FIXED VERSION)
+   ================================ */
 async function saveSubject() {
   if (!form.value.course_code || !form.value.description)
     return showAlert("Course code & description required", "error");
@@ -426,6 +434,11 @@ async function saveSubject() {
         ? ["NONE"]
         : form.value.prerequisites,
   };
+
+  // 🔥 FIX: GENERATE ID FOR NEW SUBJECTS
+  if (!form.value.id) {
+    payload.id = crypto.randomUUID();
+  }
 
   let error;
 
@@ -460,6 +473,7 @@ async function saveSubject() {
   loadPrereqs();
 }
 
+/* DELETE */
 function confirmDelete(s) {
   deleteInfo.value = s;
   showDeleteDialog.value = true;
@@ -475,8 +489,6 @@ async function deleteSubjectNow() {
   loadSubjects();
 }
 </script>
-
-
 
 <style scoped>
 .nav-active {
