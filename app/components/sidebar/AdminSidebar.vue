@@ -23,8 +23,6 @@ const logout = async () => {
     <v-divider />
 
     <v-list nav density="comfortable">
-      <v-list-subheader>Administration</v-list-subheader>
-
       <v-list-item
         to="/admin/dashboard"
         prepend-icon="mdi-view-dashboard"
