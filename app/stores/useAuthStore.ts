@@ -49,17 +49,22 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async signIn(email: string, password: string) {
-      const supabase = useSupabase()
+  const supabase = useSupabase()
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  })
 
-      if (error) throw error
+  if (error) throw error
 
-      await this.init()
-    },
+  await this.init()
+
+  if (this.user?.role === 'ADMIN') return navigateTo('/admin/dashboard')
+  if (this.user?.role === 'DEAN') return navigateTo('/dean/dashboard')
+  if (this.user?.role === 'FACULTY') return navigateTo('/faculty/schedule')
+},
+
 
     async signOut() {
       const supabase = useSupabase()

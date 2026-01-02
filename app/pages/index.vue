@@ -1,13 +1,24 @@
 <script setup lang="ts">
-import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/useAuthStore'
+import { watchEffect } from 'vue'
 
-const app = useAppStore()
+const auth = useAuthStore()
+
+watchEffect(() => {
+  if (!auth.loading && auth.user) {
+    if (auth.user.role === 'ADMIN') navigateTo('/admin/dashboard')
+    if (auth.user.role === 'DEAN') navigateTo('/dean/dashboard')
+    if (auth.user.role === 'FACULTY') navigateTo('/faculty/schedule')
+  }
+})
 </script>
 
 <template>
-  <v-container>
-    <v-card class="pa-4">
-      <v-card-title>{{ app.test }}</v-card-title>
-    </v-card>
+  <v-container class="fill-height d-flex align-center justify-center">
+    <v-progress-circular
+      indeterminate
+      color="primary"
+      size="48"
+    />
   </v-container>
 </template>
