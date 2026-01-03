@@ -2,6 +2,10 @@
 import { ref } from 'vue'
 import { useAuthStore } from '@/stores/useAuthStore'
 
+definePageMeta({
+  layout: 'auth'
+})
+
 const auth = useAuthStore()
 
 const email = ref('')
