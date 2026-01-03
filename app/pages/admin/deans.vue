@@ -19,7 +19,7 @@ const loading = ref(false)
 const search = ref('')
 
 // dialogs
-const dialogOpen = ref(false)
+const inviteDialogOpen = ref(false)
 const editDialogOpen = ref(false)
 const confirmDelete = ref(false)
 
@@ -42,7 +42,8 @@ const fetchDeans = async () => {
         first_name,
         last_name,
         middle_name,
-        is_active
+        is_active,
+        last_login_at
       ),
       departments (
         id,
@@ -53,13 +54,16 @@ const fetchDeans = async () => {
     .order('created_at', { ascending: false })
 
   if (error) {
-    notify.error('Failed to load deans')
+    console.error(error)
+    notify.error(error.message || 'Failed to load deans')
   } else {
     deans.value = data ?? []
   }
 
   loading.value = false
 }
+
+
 
 const fetchDepartments = async () => {
   const { data } = await supabase
@@ -69,6 +73,16 @@ const fetchDepartments = async () => {
 
   departments.value = data ?? []
 }
+
+// ================= INVITE STATE =================
+// PENDING = invited but not yet logged in
+// ACTIVE = logged in & active
+// INACTIVE = deactivated by admin
+const inviteState = (row: any) => {
+  if (!row.users?.last_login_at) return 'PENDING'
+  return row.users.is_active ? 'ACTIVE' : 'INACTIVE'
+}
+
 
 // ================= SEARCH =================
 const filteredDeans = computed(() => {
@@ -91,6 +105,18 @@ const filteredDeans = computed(() => {
     )
   })
 })
+
+// ================= INVITE =================
+const openInvite = () => {
+  editingRow.value = null        // 🔑 IMPORTANT
+  inviteDialogOpen.value = true
+}
+
+// ================= EDIT =================
+const openEdit = (row: any) => {
+  editingRow.value = row
+  editDialogOpen.value = true
+}
 
 // ================= DELETE =================
 const requestDelete = (row: any) => {
@@ -174,12 +200,6 @@ const resendInvite = async (row: any) => {
   }
 }
 
-// ================= EDIT =================
-const openEdit = (row: any) => {
-  editingRow.value = row
-  editDialogOpen.value = true
-}
-
 // ================= REALTIME =================
 let channel: any
 
@@ -216,7 +236,7 @@ onBeforeUnmount(() => {
         </p>
       </div>
 
-      <v-btn color="primary" @click="dialogOpen = true">
+      <v-btn color="primary" @click="openInvite">
         Invite Dean
       </v-btn>
     </div>
@@ -243,7 +263,7 @@ onBeforeUnmount(() => {
             <th>Dean</th>
             <th>Department</th>
             <th>Status</th>
-            <th class="text-center" width="200">Actions</th>
+            <th class="text-center" width="220">Actions</th>
           </tr>
         </template>
 
@@ -274,9 +294,15 @@ onBeforeUnmount(() => {
             <td>
               <v-chip
                 size="small"
-                :color="item.users.is_active ? 'green' : 'grey'"
+                :color="
+                  inviteState(item) === 'PENDING'
+                    ? 'orange'
+                    : inviteState(item) === 'ACTIVE'
+                      ? 'green'
+                      : 'grey'
+                "
               >
-                {{ item.users.is_active ? 'Active' : 'Inactive' }}
+                {{ inviteState(item) }}
               </v-chip>
             </td>
 
@@ -304,6 +330,7 @@ onBeforeUnmount(() => {
                 variant="text"
                 color="info"
                 @click="resendInvite(item)"
+                :disabled="inviteState(item) !== 'PENDING'"
               >
                 <v-icon size="18">mdi-email-sync</v-icon>
               </v-btn>
@@ -344,7 +371,7 @@ onBeforeUnmount(() => {
 
     <!-- INVITE -->
     <DeanDialog
-      v-model="dialogOpen"
+      v-model="inviteDialogOpen"
       :departments="departments"
       @success="fetchDeans"
     />

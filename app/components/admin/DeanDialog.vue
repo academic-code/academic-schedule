@@ -14,6 +14,7 @@ const emit = defineEmits(['update:modelValue', 'success'])
 const supabase = useSupabase()
 const notify = useNotifyStore()
 
+// ================= FORM STATE =================
 const email = ref('')
 const firstName = ref('')
 const lastName = ref('')
@@ -23,27 +24,44 @@ const loading = ref(false)
 
 const isEditMode = computed(() => !!props.editData)
 
+// ================= HELPERS =================
+const resetForm = () => {
+  email.value = ''
+  firstName.value = ''
+  lastName.value = ''
+  middleName.value = ''
+  departmentId.value = ''
+}
+
+// 🔑 THIS FIXES THE GLITCH
 watch(
-  () => props.editData,
-  (val) => {
-    if (!val) return
-    email.value = val.users.email
-    firstName.value = val.users.first_name
-    lastName.value = val.users.last_name
-    middleName.value = val.users.middle_name
-    departmentId.value = val.departments.id
-  },
-  { immediate: true }
+  () => props.modelValue,
+  (open) => {
+    if (!open) return
+
+    if (props.editData) {
+      // EDIT MODE
+      email.value = props.editData.users.email
+      firstName.value = props.editData.users.first_name
+      lastName.value = props.editData.users.last_name
+      middleName.value = props.editData.users.middle_name
+      departmentId.value = props.editData.departments.id
+    } else {
+      // INVITE MODE
+      resetForm()
+    }
+  }
 )
 
 const close = () => {
   emit('update:modelValue', false)
-  email.value = firstName.value = lastName.value = middleName.value = departmentId.value = ''
+  resetForm()
 }
 
+// ================= SUBMIT =================
 const submit = async () => {
   if (!firstName.value || !lastName.value || !departmentId.value) {
-    notify.warning('Required fields missing')
+    notify.warning('Required fields are missing')
     return
   }
 
@@ -52,6 +70,7 @@ const submit = async () => {
 
   try {
     if (isEditMode.value) {
+      // UPDATE
       await $fetch('/api/admin/update-dean', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session?.access_token}` },
@@ -65,6 +84,7 @@ const submit = async () => {
       })
       notify.success('Dean updated successfully')
     } else {
+      // INVITE
       await $fetch('/api/admin/create-dean', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session?.access_token}` },
@@ -76,7 +96,7 @@ const submit = async () => {
           department_id: departmentId.value
         }
       })
-      notify.success('Dean invited successfully')
+      notify.success('Dean invitation sent')
     }
 
     emit('success')
@@ -99,13 +119,13 @@ const submit = async () => {
       <v-text-field
         v-model="email"
         label="Email"
-        :disabled="isEditMode"
         variant="outlined"
+        :disabled="isEditMode"
       />
 
       <v-text-field v-model="firstName" label="First Name" variant="outlined" />
       <v-text-field v-model="lastName" label="Last Name" variant="outlined" />
-      <v-text-field v-model="middleName" label="Middle Name" variant="outlined" />
+      <v-text-field v-model="middleName" label="Middle Name (Optional)" variant="outlined" />
 
       <v-select
         v-model="departmentId"
