@@ -2,7 +2,9 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useSupabase } from '@/composables/useSupabase'
 import { useNotifyStore } from '@/stores/useNotifyStore'
+
 import RoomDialog from '@/components/admin/RoomDialog.vue'
+import RoomScheduleDialog from '@/components/admin/RoomScheduleDialog.vue'
 
 definePageMeta({
   middleware: 'role',
@@ -21,10 +23,12 @@ const search = ref('')
 const createDialogOpen = ref(false)
 const editDialogOpen = ref(false)
 const confirmDelete = ref(false)
+const viewSchedulesOpen = ref(false)
 
 // selection
 const editingRow = ref<any | null>(null)
 const deletingRow = ref<any | null>(null)
+const viewingRoomId = ref<string | null>(null)
 
 // ================= FETCH =================
 const fetchRooms = async () => {
@@ -66,6 +70,12 @@ const openEdit = (row: any) => {
   editDialogOpen.value = true
 }
 
+// ================= VIEW SCHEDULES =================
+const openViewSchedules = (row: any) => {
+  viewingRoomId.value = row.id
+  viewSchedulesOpen.value = true
+}
+
 // ================= DELETE =================
 const requestDelete = (row: any) => {
   deletingRow.value = row
@@ -73,6 +83,8 @@ const requestDelete = (row: any) => {
 }
 
 const executeDelete = async () => {
+  if (!deletingRow.value) return
+
   const { data: { session } } = await supabase.auth.getSession()
 
   try {
@@ -89,7 +101,7 @@ const executeDelete = async () => {
     notify.success('Room deleted')
     fetchRooms()
   } catch (err: any) {
-    notify.error(err?.data?.message || 'Delete failed')
+    notify.error(err?.data?.message || 'Room is currently in use')
   } finally {
     confirmDelete.value = false
     deletingRow.value = null
@@ -112,6 +124,7 @@ const toggleStatus = async (row: any) => {
       }
     })
 
+    notify.success('Room status updated')
     fetchRooms()
   } catch (err: any) {
     notify.error(err?.data?.message || 'Status update failed')
@@ -181,7 +194,7 @@ onBeforeUnmount(() => {
             <th>Type</th>
             <th>Capacity</th>
             <th>Status</th>
-            <th class="text-center" width="160">Actions</th>
+            <th class="text-center" width="220">Actions</th>
           </tr>
         </template>
 
@@ -201,10 +214,28 @@ onBeforeUnmount(() => {
             </td>
 
             <td class="text-center">
-              <v-btn icon size="small" variant="text" @click="openEdit(item)">
+              <!-- VIEW SCHEDULES -->
+              <v-btn
+                icon
+                size="small"
+                variant="text"
+                color="info"
+                @click="openViewSchedules(item)"
+              >
+                <v-icon size="18">mdi-eye</v-icon>
+              </v-btn>
+
+              <!-- EDIT -->
+              <v-btn
+                icon
+                size="small"
+                variant="text"
+                @click="openEdit(item)"
+              >
                 <v-icon size="18">mdi-pencil</v-icon>
               </v-btn>
 
+              <!-- TOGGLE -->
               <v-btn
                 icon
                 size="small"
@@ -217,6 +248,7 @@ onBeforeUnmount(() => {
                 </v-icon>
               </v-btn>
 
+              <!-- DELETE -->
               <v-btn
                 icon
                 size="small"
@@ -242,11 +274,19 @@ onBeforeUnmount(() => {
     <v-dialog v-model="confirmDelete" max-width="420">
       <v-card class="pa-6">
         <h3 class="mb-3">Delete Room</h3>
-        <p>This will permanently remove the room.</p>
+        <p>
+          This room will be permanently removed.
+          <br />
+          <strong>Deletion is blocked if the room is used in schedules.</strong>
+        </p>
 
         <div class="d-flex justify-end">
-          <v-btn variant="text" @click="confirmDelete = false">Cancel</v-btn>
-          <v-btn color="error" @click="executeDelete">Delete</v-btn>
+          <v-btn variant="text" @click="confirmDelete = false">
+            Cancel
+          </v-btn>
+          <v-btn color="error" @click="executeDelete">
+            Delete
+          </v-btn>
         </div>
       </v-card>
     </v-dialog>
@@ -262,6 +302,12 @@ onBeforeUnmount(() => {
       v-model="editDialogOpen"
       :editData="editingRow"
       @success="fetchRooms"
+    />
+
+    <!-- VIEW SCHEDULES -->
+    <RoomScheduleDialog
+      v-model="viewSchedulesOpen"
+      :roomId="viewingRoomId"
     />
   </div>
 </template>
