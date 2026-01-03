@@ -205,14 +205,33 @@ let channel: any
 
 const setupRealtime = () => {
   channel = supabase
-    .channel('deans-realtime')
+    .channel('deans-users-realtime')
+
+    // 🔁 when dean row changes (invite / delete)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'deans' },
-      fetchDeans
+      () => {
+        fetchDeans()
+      }
     )
+
+    // 🔁 when user status changes (login, activate, deactivate)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'users' },
+      (payload: any) => {
+        // Only refetch if this user is a DEAN
+        const role = payload.new?.role ?? payload.old?.role
+        if (role === 'DEAN') {
+          fetchDeans()
+        }
+      }
+    )
+
     .subscribe()
 }
+
 
 onMounted(async () => {
   await fetchDepartments()
