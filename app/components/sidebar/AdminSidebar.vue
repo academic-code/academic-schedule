@@ -62,6 +62,14 @@ const logout = async () => {
       >
         Academic Terms
       </v-list-item>
+
+        <v-list-item
+        to="/admin/periods"
+        prepend-icon="mdi-book-clock-outline"
+        :active="isActive('/admin/periods')"
+      >
+        Periods
+      </v-list-item>
     </v-list>
 
     <v-spacer />
