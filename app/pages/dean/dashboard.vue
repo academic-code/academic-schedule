@@ -68,32 +68,37 @@ let channels: any[] = []
 onMounted(async () => {
   await dashboard.fetchDashboard()
 
-  const termChannel = supabase
-    .channel("academic-term-lock")
-    .on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "academic_terms" },
-      (payload) => {
-        if (payload.new.is_locked) {
-          dashboard.notifications.unshift({
-            id: crypto.randomUUID(),
-            title: "Academic Term Locked",
-            message: "Scheduling has been locked by the administrator.",
-            created_at: new Date().toISOString()
-          })
-          dashboard.academicTerm.is_locked = true
-        }
-      }
-    )
-    .subscribe()
+  const tables = [
+    "academic_terms",
+    "notifications",
+    "audit_logs",
+    "classes",
+    "subjects",
+    "faculty",
+    "schedules"
+  ]
 
-  channels.push(termChannel)
+  tables.forEach((table) => {
+    const channel = supabase
+      .channel(`dean-dashboard-${table}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table },
+        () => {
+          dashboard.refresh()
+        }
+      )
+      .subscribe()
+
+    channels.push(channel)
+  })
 })
 
 onBeforeUnmount(() => {
   channels.forEach((c) => supabase.removeChannel(c))
 })
 </script>
+
 
 <style scoped>
 .dashboard-container {

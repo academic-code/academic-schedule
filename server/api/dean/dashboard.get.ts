@@ -21,19 +21,14 @@ export default defineEventHandler(async (event) => {
     .single()
 
   if (deanErr || !deanUser) {
-    throw createError({
-      statusCode: 404,
-      message: "Dean user not found"
-    })
+    throw createError({ statusCode: 404, message: "Dean user not found" })
   }
 
   const fullName = [
     deanUser.first_name,
     deanUser.middle_name,
     deanUser.last_name
-  ]
-    .filter(Boolean)
-    .join(" ")
+  ].filter(Boolean).join(" ")
 
   /* ---------------- DEPARTMENT ---------------- */
   const { data: department, error: deptErr } = await supabase
@@ -43,10 +38,7 @@ export default defineEventHandler(async (event) => {
     .single()
 
   if (deptErr || !department) {
-    throw createError({
-      statusCode: 404,
-      message: "Department not found"
-    })
+    throw createError({ statusCode: 404, message: "Department not found" })
   }
 
   /* ---------------- ACTIVE TERM ---------------- */
@@ -88,7 +80,7 @@ export default defineEventHandler(async (event) => {
     .select("id, title, message, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .limit(5)
+    .limit(10)
 
   /* ---------------- RECENT ACTIVITY ---------------- */
   const { data: recentActivity } = await supabase
@@ -96,7 +88,7 @@ export default defineEventHandler(async (event) => {
     .select("action, entity_type, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .limit(5)
+    .limit(10)
 
   return {
     dean: {
@@ -104,25 +96,14 @@ export default defineEventHandler(async (event) => {
       email: deanUser.email,
       full_name: fullName || "Dean"
     },
-
     department,
-
-    academic_term: academicTerm
-      ? {
-          id: academicTerm.id,
-          academic_year: academicTerm.academic_year,
-          semester: academicTerm.semester,
-          is_active: academicTerm.is_active,
-          is_locked: academicTerm.is_locked
-        }
-      : {
-          id: null,
-          academic_year: null,
-          semester: null,
-          is_active: false,
-          is_locked: false
-        },
-
+    academic_term: academicTerm ?? {
+      id: null,
+      academic_year: null,
+      semester: null,
+      is_active: false,
+      is_locked: false
+    },
     stats: {
       classes: classesRes.count ?? 0,
       subjects: subjectsRes.count ?? 0,
@@ -130,13 +111,11 @@ export default defineEventHandler(async (event) => {
       draft_schedules: draftSchedulesRes.count ?? 0,
       published_schedules: publishedSchedulesRes.count ?? 0
     },
-
     warnings: {
       unassigned_classes: unassignedClassesRes.count ?? 0,
       inactive_faculty: inactiveFacultyRes.count ?? 0,
       locked_subjects: lockedSubjectsRes.count ?? 0
     },
-
     notifications: notifications ?? [],
     recent_activity: recentActivity ?? []
   }
