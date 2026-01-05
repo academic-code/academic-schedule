@@ -22,7 +22,7 @@ const logout = async () => {
     <v-divider />
 
     <v-list nav density="comfortable">
-      <v-list-subheader>Department</v-list-subheader>
+  
 
       <v-list-item
         to="/dean/dashboard"
