@@ -56,6 +56,14 @@ const logout = async () => {
         Subjects
       </v-list-item>
 
+           <v-list-item
+        to="/dean/curriculums"
+        prepend-icon="mdi-book-education-outline"
+        :active="isActive('/dean/curriculums')"
+      >
+        Curriculums
+      </v-list-item>
+
       <v-list-item
         to="/dean/schedules"
         prepend-icon="mdi-calendar-clock"
