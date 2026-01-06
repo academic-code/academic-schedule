@@ -18,6 +18,7 @@
       @edit="openEdit"
       @delete="remove"
       @upload="openUpload"
+      @toggle="toggleActive"
     />
 
     <CurriculumDrawer
@@ -85,6 +86,17 @@ async function save(payload: any) {
 async function remove(id: string) {
   await store.delete(id)
 }
+
+async function toggleActive(id: string, value: boolean) {
+  try {
+    await store.update(id, { is_active: value })
+  } catch {
+    // rollback UI if backend fails
+    const item = store.items.find(i => i.id === id)
+    if (item) item.is_active = !value
+  }
+}
+
 
 function openUpload(item: any) {
   uploadTarget.value = item

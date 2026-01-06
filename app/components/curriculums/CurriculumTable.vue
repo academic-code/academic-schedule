@@ -14,7 +14,7 @@
         </div>
       </template>
 
-      <!-- CURRICULUM CODE -->
+      <!-- CURRICULUM CODE + SUBJECT COUNT -->
       <template #item.curriculum_code="{ item }">
         <div class="d-flex align-center">
           <span>{{ item.curriculum_code }}</span>
@@ -39,12 +39,12 @@
       <!-- ACTIVE TOGGLE -->
       <template #item.is_active="{ item }">
         <v-switch
-          v-model="item.is_active"
+          :model-value="item.is_active"
           color="green"
           inset
           hide-details
           :disabled="item.is_locked"
-          @update:model-value="$emit('toggle', item)"
+          @update:model-value="val => emitToggle(item.id, val)"
         />
       </template>
 
@@ -112,16 +112,16 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   items: any[]
   loading: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: "edit", item: any): void
   (e: "delete", id: string): void
   (e: "upload", item: any): void
-  (e: "toggle", item: any): void
+  (e: "toggle", id: string, value: boolean): void
 }>()
 
 const headers = [
@@ -132,6 +132,10 @@ const headers = [
   { title: "Created", value: "created_at", sortable: true },
   { title: "Actions", value: "actions", sortable: false }
 ]
+
+function emitToggle(id: string, value: boolean) {
+  emit("toggle", id, value)
+}
 
 function formatDate(date: string) {
   return new Date(date).toLocaleDateString()
