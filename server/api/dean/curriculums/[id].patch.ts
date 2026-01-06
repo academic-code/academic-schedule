@@ -4,19 +4,32 @@ import { requireDean } from "./_helpers"
 export default defineEventHandler(async (event) => {
   const { supabase, departmentId, userId } = await requireDean(event)
   const id = event.context.params?.id
-  if (!id) throw createError({ statusCode: 400, message: "Missing id" })
-
   const body = await readBody(event)
 
-  const { data: existing } = await supabase
+  const { data: curriculum } = await supabase
     .from("curriculums")
-    .select("*")
+    .select(`
+      *,
+      subjects:subjects(
+        schedules(count)
+      )
+    `)
     .eq("id", id)
     .eq("department_id", departmentId)
     .single()
 
-  if (!existing) {
+  if (!curriculum) {
     throw createError({ statusCode: 404, message: "Curriculum not found" })
+  }
+
+  const isLocked =
+    (curriculum.subjects?.[0]?.schedules?.[0]?.count ?? 0) > 0
+
+  if (isLocked && ("program" in body || "curriculum_code" in body)) {
+    throw createError({
+      statusCode: 403,
+      message: "Curriculum is locked (used in schedules)"
+    })
   }
 
   const { data, error } = await supabase
@@ -26,14 +39,14 @@ export default defineEventHandler(async (event) => {
     .select()
     .single()
 
-  if (error) throw createError({ statusCode: 500, message: error.message })
+  if (error) throw error
 
   await supabase.from("audit_logs").insert({
     user_id: userId,
     action: "UPDATE",
     entity_type: "CURRICULUM",
     entity_id: id,
-    old_value: existing,
+    old_value: curriculum,
     new_value: data
   })
 

@@ -14,11 +14,21 @@
         </div>
       </template>
 
-      <!-- CURRICULUM VERSION -->
-      <template #item.curriculum="{ item }">
-        <span>
-          {{ item.curriculum_code }}
-        </span>
+      <!-- CURRICULUM CODE -->
+      <template #item.curriculum_code="{ item }">
+        <div class="d-flex align-center">
+          <span>{{ item.curriculum_code }}</span>
+
+          <v-chip
+            v-if="item.subjects_count !== undefined"
+            size="x-small"
+            class="ml-2"
+            color="primary"
+            variant="tonal"
+          >
+            {{ item.subjects_count }} subjects
+          </v-chip>
+        </div>
       </template>
 
       <!-- EFFECTIVE YEAR -->
@@ -26,15 +36,16 @@
         {{ item.effective_year }}
       </template>
 
-      <!-- STATUS -->
+      <!-- ACTIVE TOGGLE -->
       <template #item.is_active="{ item }">
-        <v-chip
-          size="small"
-          variant="tonal"
-          :color="item.is_active ? 'green' : 'grey'"
-        >
-          {{ item.is_active ? "Active" : "Inactive" }}
-        </v-chip>
+        <v-switch
+          v-model="item.is_active"
+          color="green"
+          inset
+          hide-details
+          :disabled="item.is_locked"
+          @update:model-value="$emit('toggle', item)"
+        />
       </template>
 
       <!-- CREATED -->
@@ -50,6 +61,7 @@
               v-bind="props"
               icon
               size="small"
+              :disabled="item.is_locked"
               @click="$emit('edit', item)"
             >
               <v-icon>mdi-pencil</v-icon>
@@ -71,13 +83,16 @@
           </template>
         </v-tooltip>
 
-        <v-tooltip text="Delete curriculum">
+        <v-tooltip
+          :text="item.is_locked ? 'Curriculum is locked' : 'Delete curriculum'"
+        >
           <template #activator="{ props }">
             <v-btn
               v-bind="props"
               icon
               size="small"
               color="error"
+              :disabled="item.is_locked"
               @click="$emit('delete', item.id)"
             >
               <v-icon>mdi-delete</v-icon>
@@ -86,7 +101,7 @@
         </v-tooltip>
       </template>
 
-      <!-- EMPTY STATE -->
+      <!-- EMPTY -->
       <template #no-data>
         <div class="text-center pa-6 text-grey">
           No curriculums found.
@@ -102,13 +117,18 @@ defineProps<{
   loading: boolean
 }>()
 
-defineEmits(["edit", "delete", "upload"])
+defineEmits<{
+  (e: "edit", item: any): void
+  (e: "delete", id: string): void
+  (e: "upload", item: any): void
+  (e: "toggle", item: any): void
+}>()
 
 const headers = [
   { title: "Program", value: "program", sortable: true },
-  { title: "Curriculum Version", value: "curriculum" },
+  { title: "Curriculum", value: "curriculum_code" },
   { title: "Effective Year", value: "effective_year", sortable: true },
-  { title: "Status", value: "is_active", sortable: false },
+  { title: "Active", value: "is_active", sortable: false },
   { title: "Created", value: "created_at", sortable: true },
   { title: "Actions", value: "actions", sortable: false }
 ]
