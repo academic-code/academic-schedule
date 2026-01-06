@@ -5,12 +5,10 @@
     @update:model-value="emit('update:modelValue', $event)"
   >
     <v-card>
-      <!-- HEADER -->
       <v-card-title class="font-weight-bold">
         {{ editing ? "Edit Subject" : "New Subject" }}
       </v-card-title>
 
-      <!-- BODY -->
       <v-card-text class="pt-4">
         <v-alert
           v-if="!curriculumId"
@@ -20,6 +18,14 @@
         >
           Please select a curriculum before adding a subject.
         </v-alert>
+
+        <v-select
+          v-model="form.subject_type"
+          label="Subject Type"
+          :items="['MAJOR', 'GENED', 'PE_NSTP']"
+          :disabled="locked"
+          required
+        />
 
         <v-text-field
           v-model="form.course_code"
@@ -76,7 +82,6 @@
         </v-row>
       </v-card-text>
 
-      <!-- ACTIONS -->
       <v-card-actions>
         <v-spacer />
         <v-btn variant="text" @click="emit('update:modelValue', false)">
@@ -97,8 +102,6 @@
 <script setup lang="ts">
 import { reactive, watch, computed } from "vue"
 
-/* ================= PROPS ================= */
-
 const props = defineProps<{
   modelValue: boolean
   editing: boolean
@@ -111,9 +114,8 @@ const emit = defineEmits<{
   (e: "save", payload: any): void
 }>()
 
-/* ================= FORM ================= */
-
 const form = reactive({
+  subject_type: "MAJOR",
   course_code: "",
   description: "",
   year_level: 1,
@@ -122,43 +124,45 @@ const form = reactive({
   lab_units: 0
 })
 
-/* ================= WATCH ================= */
-
 watch(
   () => props.item,
   (val) => {
     if (val) {
-      form.course_code = val.course_code
-      form.description = val.description
-      form.year_level = val.year_level
-      form.semester = val.semester
-      form.lec_units = val.lec_units ?? 0
-      form.lab_units = val.lab_units ?? 0
+      Object.assign(form, {
+        subject_type: val.subject_type,
+        course_code: val.course_code,
+        description: val.description,
+        year_level: val.year_level,
+        semester: val.semester,
+        lec_units: val.lec_units ?? 0,
+        lab_units: val.lab_units ?? 0
+      })
     } else {
-      form.course_code = ""
-      form.description = ""
-      form.year_level = 1
-      form.semester = 1
-      form.lec_units = 0
-      form.lab_units = 0
+      Object.assign(form, {
+        subject_type: "MAJOR",
+        course_code: "",
+        description: "",
+        year_level: 1,
+        semester: 1,
+        lec_units: 0,
+        lab_units: 0
+      })
     }
   },
   { immediate: true }
 )
-
-/* ================= LOGIC ================= */
 
 const locked = computed(() => false)
 
 const canSave = computed(() =>
   !!props.curriculumId &&
   !!form.course_code &&
-  !!form.description
+  !!form.description &&
+  !!form.subject_type
 )
 
 function save() {
   if (!props.curriculumId) return
-
   emit("save", {
     ...form,
     curriculum_id: props.curriculumId

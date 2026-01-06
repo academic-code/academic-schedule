@@ -1,6 +1,5 @@
 <template>
   <div class="pa-6">
-    <!-- HEADER -->
     <div class="d-flex justify-space-between align-center mb-4">
       <div>
         <h2 class="font-weight-bold">Subjects</h2>
@@ -19,13 +18,11 @@
       </v-btn>
     </div>
 
-    <!-- FILTERS -->
     <SubjectFilters
       :filters="filters"
       :curriculums="curriculums"
     />
 
-    <!-- TABLE -->
     <SubjectTable
       :items="subjectStore.subjects"
       :loading="subjectStore.loading"
@@ -33,7 +30,6 @@
       @delete="deleteSubject"
     />
 
-    <!-- DRAWER -->
     <SubjectDrawer
       v-model="drawer"
       :editing="editing"
@@ -42,7 +38,6 @@
       @save="handleSave"
     />
 
-    <!-- SNACKBAR -->
     <v-snackbar
       v-model="subjectStore.snackbar.show"
       :color="subjectStore.snackbar.color"
@@ -53,6 +48,7 @@
     </v-snackbar>
   </div>
 </template>
+
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch } from "vue"
