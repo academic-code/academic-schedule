@@ -111,7 +111,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue"
+import { ref, computed, watch } from "vue"
+import { useSupabase } from "@/composables/useSupabase"
 
 /* ================= PROPS ================= */
 
@@ -126,11 +127,50 @@ const emit = defineEmits<{
   (e: "submit", file: File): void
 }>()
 
+/* ================= EXISTING SUBJECT KEYS ================= */
+
+const existingKeys = ref<Set<string>>(new Set())
+
+async function loadExistingSubjects() {
+  existingKeys.value.clear()
+  if (!props.curriculum) return
+
+  const { data } = await useSupabase().auth.getSession()
+  const token = data.session?.access_token
+  if (!token) return
+
+  const rows = await $fetch<any[]>(
+    `/api/dean/curriculums/${props.curriculum.id}/subjects`,
+    {
+      headers: { Authorization: `Bearer ${token}` }
+    }
+  )
+
+  rows.forEach(r => {
+    existingKeys.value.add(
+      `${r.course_code}-${r.year_level}-${r.semester}`
+    )
+  })
+}
+
+watch(
+  () => props.curriculum,
+  loadExistingSubjects,
+  { immediate: true }
+)
+
 /* ================= STATE ================= */
 
 const file = ref<File | null>(null)
 const preview = ref<any[]>([])
 const headerError = ref<string | null>(null)
+
+watch(file, (v) => {
+  if (!v) {
+    preview.value = []
+    headerError.value = null
+  }
+})
 
 /* ================= CONSTANTS ================= */
 
@@ -173,7 +213,7 @@ function parse() {
       return
     }
 
-    const seen = new Set<string>()
+    const csvSeen = new Set<string>()
 
     preview.value = lines.slice(1).map(line => {
       const values = line.split(",").map(v => v.trim())
@@ -181,8 +221,11 @@ function parse() {
       headers.forEach((h, i) => (row[h] = values[i]))
 
       const key = `${row.course_code}-${row.year_level}-${row.semester}`
-      const duplicate = seen.has(key)
-      seen.add(key)
+
+      const duplicate =
+        csvSeen.has(key) || existingKeys.value.has(key)
+
+      csvSeen.add(key)
 
       const valid =
         !!row.course_code &&
@@ -212,9 +255,16 @@ const duplicateCount = computed(
   () => preview.value.filter(r => r.duplicate).length
 )
 
-const canUpload = computed(
-  () => !!file.value && preview.value.length > 0 && !headerError.value
-)
+const canUpload = computed(() => {
+  if (!file.value) return false
+  if (headerError.value) return false
+  if (props.loading) return false
+
+  return (
+    preview.value.length > 0 &&
+    preview.value.every(r => r.valid && !r.duplicate)
+  )
+})
 
 /* ================= ACTIONS ================= */
 
@@ -264,3 +314,4 @@ const headers = [
   { title: "Status", value: "valid" }
 ]
 </script>
+

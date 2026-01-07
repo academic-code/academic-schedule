@@ -31,8 +31,10 @@
     <CurriculumUpload
       v-model="uploadDialog"
       :curriculum="uploadTarget"
+      :loading="store.uploading"
       @submit="uploadCSV"
     />
+
 
     <v-snackbar
       v-model="store.snackbar.show"

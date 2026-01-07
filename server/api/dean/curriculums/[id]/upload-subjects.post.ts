@@ -28,6 +28,7 @@ export default defineEventHandler(async (event) => {
 
   let imported = 0
   let skipped = 0
+  const total = lines.length - 1
 
   for (const line of lines.slice(1)) {
     const values = line.split(",").map(v => v.trim())
@@ -37,6 +38,7 @@ export default defineEventHandler(async (event) => {
     if (
       !row.course_code ||
       !row.description ||
+      !row.year_level ||
       ![1, 2, 3].includes(Number(row.semester))
     ) {
       skipped++
@@ -61,10 +63,12 @@ export default defineEventHandler(async (event) => {
       lab_units: Number(row.lab_units ?? 0)
     })
 
+    // Duplicate per curriculum only
     if (error?.code === "23505") {
       skipped++
       continue
     }
+
     if (error) throw error
 
     imported++
@@ -75,8 +79,8 @@ export default defineEventHandler(async (event) => {
     action: "CREATE",
     entity_type: "CURRICULUM_SUBJECT_UPLOAD",
     entity_id: curriculumId,
-    new_value: { imported, skipped }
+    new_value: { total, imported, skipped }
   })
 
-  return { imported, skipped }
+  return { total, imported, skipped }
 })

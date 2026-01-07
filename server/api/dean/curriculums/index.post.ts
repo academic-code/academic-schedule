@@ -9,20 +9,38 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: "All fields are required" })
   }
 
-  const { data: exists } = await supabase
-    .from("curriculums")
-    .select("id")
-    .eq("department_id", departmentId)
-    .eq("program", program)
-    .eq("curriculum_code", curriculum_code)
-    .maybeSingle()
+  // const { data: exists } = await supabase
+  //   .from("curriculums")
+  //   .select("id")
+  //   .eq("department_id", departmentId)
+  //   .eq("program", program)
+  //   .eq("curriculum_code", curriculum_code)
+  //   .maybeSingle()
 
-  if (exists) {
-    throw createError({
-      statusCode: 409,
-      message: `Curriculum ${program} ${curriculum_code} already exists`
-    })
-  }
+  // if (exists) {
+  //   throw createError({
+  //     statusCode: 409,
+  //     message: `Curriculum ${program} ${curriculum_code} already exists`
+  //   })
+  // }
+
+  const { data: exists } = await supabase
+  .from("curriculums")
+  .select("id")
+  .eq("department_id", departmentId)
+  .eq("program", program)
+  .eq("curriculum_code", curriculum_code)
+  .maybeSingle()
+
+if (exists) {
+  throw createError({
+    statusCode: 409,
+    message: `Curriculum ${program} ${curriculum_code} already exists`
+  })
+}
+
+
+
 
   const { data, error } = await supabase
     .from("curriculums")
