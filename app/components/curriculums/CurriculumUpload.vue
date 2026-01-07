@@ -5,6 +5,7 @@
     @update:model-value="$emit('update:modelValue', $event)"
   >
     <v-card>
+      <!-- HEADER -->
       <v-card-title class="font-weight-bold d-flex justify-space-between">
         Upload Subjects (CSV)
 
@@ -18,6 +19,7 @@
         </v-btn>
       </v-card-title>
 
+      <!-- BODY -->
       <v-card-text>
         <v-alert type="info" variant="tonal" class="mb-4">
           Curriculum:
@@ -25,7 +27,6 @@
           ({{ curriculum?.curriculum_code }})
         </v-alert>
 
-        <!-- FILE INPUT -->
         <v-file-input
           v-model="file"
           accept=".csv"
@@ -34,7 +35,6 @@
           @update:model-value="parse"
         />
 
-        <!-- HEADER ERROR -->
         <v-alert
           v-if="headerError"
           type="error"
@@ -44,13 +44,13 @@
           {{ headerError }}
         </v-alert>
 
-        <!-- PREVIEW TABLE -->
+        <!-- PREVIEW -->
         <v-data-table
           v-if="preview.length"
           :headers="headers"
           :items="preview"
-          class="mt-4"
           density="compact"
+          class="mt-4"
         >
           <template #item.subject_type="{ item }">
             <v-chip size="x-small" variant="tonal">
@@ -90,11 +90,16 @@
         </v-alert>
       </v-card-text>
 
+      <!-- ACTIONS -->
       <v-card-actions>
         <v-spacer />
-        <v-btn variant="text" @click="close">Cancel</v-btn>
+        <v-btn variant="text" @click="close">
+          Cancel
+        </v-btn>
+
         <v-btn
           color="primary"
+          :loading="loading"
           :disabled="!canUpload"
           @click="submit"
         >
@@ -113,6 +118,7 @@ import { ref, computed } from "vue"
 const props = defineProps<{
   modelValue: boolean
   curriculum: any | null
+  loading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -140,9 +146,9 @@ const REQUIRED_HEADERS = [
 /* ================= HELPERS ================= */
 
 function detectSubjectType(code: string) {
-  const upper = code.toUpperCase()
-  if (upper.startsWith("G")) return "GENED"
-  if (upper.startsWith("PATHFIT") || upper.startsWith("NSTP")) return "PE_NSTP"
+  const c = code.toUpperCase()
+  if (c.startsWith("G")) return "GENED"
+  if (c.startsWith("PATHFIT") || c.startsWith("NSTP")) return "PE_NSTP"
   return "MAJOR"
 }
 
@@ -155,16 +161,15 @@ function parse() {
 
   const reader = new FileReader()
   reader.onload = () => {
-    const text = reader.result as string
+    const text = String(reader.result ?? "")
     const lines = text.split(/\r?\n/).filter(Boolean)
     if (lines.length < 2) return
 
-    const headerLine = lines[0] ?? ""
-    const headers = headerLine.split(",").map(h => h.trim())
-
+    const headers = (lines[0] ?? "").split(",").map(h => h.trim())
     const missing = REQUIRED_HEADERS.filter(h => !headers.includes(h))
+
     if (missing.length) {
-      headerError.value = `Invalid CSV headers. Missing: ${missing.join(", ")}`
+      headerError.value = `Missing headers: ${missing.join(", ")}`
       return
     }
 
@@ -173,7 +178,6 @@ function parse() {
     preview.value = lines.slice(1).map(line => {
       const values = line.split(",").map(v => v.trim())
       const row: any = {}
-
       headers.forEach((h, i) => (row[h] = values[i]))
 
       const key = `${row.course_code}-${row.year_level}-${row.semester}`
@@ -183,15 +187,14 @@ function parse() {
       const valid =
         !!row.course_code &&
         !!row.description &&
-        !!row.year_level &&
-        !!row.semester &&
+        [1, 2, 3].includes(Number(row.semester)) &&
         !duplicate
 
       return {
         ...row,
         subject_type: detectSubjectType(row.course_code),
-        valid,
-        duplicate
+        duplicate,
+        valid
       }
     })
   }
@@ -201,18 +204,16 @@ function parse() {
 
 /* ================= COMPUTED ================= */
 
-const invalidCount = computed(() =>
-  preview.value.filter(r => !r.valid).length
+const invalidCount = computed(
+  () => preview.value.filter(r => !r.valid).length
 )
 
-const duplicateCount = computed(() =>
-  preview.value.filter(r => r.duplicate).length
+const duplicateCount = computed(
+  () => preview.value.filter(r => r.duplicate).length
 )
 
-const canUpload = computed(() =>
-  !!file.value &&
-  preview.value.length > 0 &&
-  !headerError.value
+const canUpload = computed(
+  () => !!file.value && preview.value.length > 0 && !headerError.value
 )
 
 /* ================= ACTIONS ================= */
@@ -239,17 +240,15 @@ function downloadTemplate() {
     "course_code,description,year_level,semester,lec_units,lab_units\n" +
     "IT101,Introduction to Computing,1,1,3,0\n" +
     "GEC101,Understanding the Self,1,1,3,0\n" +
-    "PATHFIT1,Physical Fitness 1,1,1,2,0\n" +
+    "PATHFIT1,Physical Fitness 1,1,3,2,0\n" +
     "NSTP1,Civic Welfare Training Service 1,1,2,3,0"
 
   const blob = new Blob([csv], { type: "text/csv" })
   const url = URL.createObjectURL(blob)
-
   const a = document.createElement("a")
   a.href = url
-  a.download = "subject_template.csv"
+  a.download = "curriculum_subject_template.csv"
   a.click()
-
   URL.revokeObjectURL(url)
 }
 
@@ -259,7 +258,7 @@ const headers = [
   { title: "Code", value: "course_code" },
   { title: "Description", value: "description" },
   { title: "Year", value: "year_level" },
-  { title: "Sem", value: "semester" },
+  { title: "Semester", value: "semester" },
   { title: "Type", value: "subject_type" },
   { title: "Duplicate", value: "duplicate" },
   { title: "Status", value: "valid" }
