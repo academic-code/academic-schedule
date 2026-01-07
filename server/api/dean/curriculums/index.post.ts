@@ -3,26 +3,24 @@ import { requireDean } from "./_helpers"
 
 export default defineEventHandler(async (event) => {
   const { supabase, departmentId, userId } = await requireDean(event)
-  const body = await readBody(event)
-
-  const { program, curriculum_code, effective_year } = body
+  const { program, curriculum_code, effective_year } = await readBody(event)
 
   if (!program || !curriculum_code || !effective_year) {
-    throw createError({ statusCode: 400, message: "Missing fields" })
+    throw createError({ statusCode: 400, message: "All fields are required" })
   }
 
-  // Duplicate check (DB also enforces this)
   const { data: exists } = await supabase
     .from("curriculums")
     .select("id")
     .eq("department_id", departmentId)
+    .eq("program", program)
     .eq("curriculum_code", curriculum_code)
     .maybeSingle()
 
   if (exists) {
     throw createError({
       statusCode: 409,
-      message: "Curriculum code already exists"
+      message: `Curriculum ${program} ${curriculum_code} already exists`
     })
   }
 
@@ -38,7 +36,7 @@ export default defineEventHandler(async (event) => {
     .select()
     .single()
 
-  if (error) throw createError({ statusCode: 500, message: error.message })
+  if (error) throw error
 
   await supabase.from("audit_logs").insert({
     user_id: userId,

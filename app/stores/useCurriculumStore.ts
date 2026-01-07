@@ -34,7 +34,10 @@ export const useCurriculumStore = defineStore("curriculumStore", {
   actions: {
     /* ---------- UI ---------- */
 
-    show(text: string, color: "success" | "error" | "info" = "success") {
+    show(
+      text: string,
+      color: "success" | "error" | "info" = "success"
+    ) {
       this.snackbar = { show: true, text, color }
     },
 
@@ -54,9 +57,10 @@ export const useCurriculumStore = defineStore("curriculumStore", {
       this.loading = true
       try {
         const token = await this.token()
-        this.items = await $fetch<Curriculum[]>("/api/dean/curriculums", {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        this.items = await $fetch<Curriculum[]>(
+          "/api/dean/curriculums",
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
       } catch (e: any) {
         this.show(e.message || "Failed to load curriculums", "error")
       } finally {
@@ -132,6 +136,8 @@ export const useCurriculumStore = defineStore("curriculumStore", {
     /* ---------- TOGGLE ACTIVE ---------- */
 
     async toggleActive(item: Curriculum) {
+      const previous = item.is_active
+
       try {
         const token = await this.token()
 
@@ -155,7 +161,7 @@ export const useCurriculumStore = defineStore("curriculumStore", {
         )
       } catch (e: any) {
         // rollback UI
-        item.is_active = !item.is_active
+        item.is_active = previous
         this.show(e.message || "Failed to update status", "error")
       }
     },
@@ -185,11 +191,10 @@ export const useCurriculumStore = defineStore("curriculumStore", {
       this.uploading = true
       try {
         const token = await this.token()
-
         const form = new FormData()
         form.append("file", file)
 
-        await $fetch(
+        const res: any = await $fetch(
           `/api/dean/curriculums/${curriculumId}/upload-subjects`,
           {
             method: "POST",
@@ -198,7 +203,15 @@ export const useCurriculumStore = defineStore("curriculumStore", {
           }
         )
 
-        this.show("Subjects uploaded successfully")
+        if (res.imported === 0) {
+          this.show("No subjects imported (all duplicates)", "info")
+        } else {
+          this.show(
+            `Uploaded ${res.imported} subjects successfully`,
+            "success"
+          )
+        }
+
         await this.fetch()
       } catch (e: any) {
         this.show(e.message || "CSV upload failed", "error")
