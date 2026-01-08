@@ -2,7 +2,7 @@
 import { useAuthStore } from "@/stores/useAuthStore"
 import { useDeanDashboardStore } from "@/stores/useDeanDashboardStore"
 import { useRoute } from "vue-router"
-import { computed } from "vue"
+import { computed, onMounted } from "vue"
 
 const auth = useAuthStore()
 const dashboard = useDeanDashboardStore()
@@ -11,11 +11,29 @@ const route = useRoute()
 const isActive = (path: string) => route.path.startsWith(path)
 
 /**
- * ✅ REGULAR dean can see everything
- * ❌ GENED / PE_NSTP are restricted
+ * 🔑 ENSURE DASHBOARD CONTEXT EXISTS
+ * Sidebar must bootstrap dashboard on refresh
+ */
+onMounted(async () => {
+  if (!dashboard.department && !dashboard.loading) {
+    await dashboard.fetchDashboard()
+  }
+})
+
+/**
+ * Sidebar ready only when department is known
+ */
+const sidebarReady = computed(() => {
+  return !!dashboard.department
+})
+
+/**
+ * ✅ REGULAR dean logic
+ * Safe default prevents GENED flicker
  */
 const isRegularDean = computed(() => {
-  return dashboard.department?.department_type === "REGULAR"
+  if (!dashboard.department) return true
+  return dashboard.department.department_type === "REGULAR"
 })
 
 const logout = async () => {
@@ -32,7 +50,20 @@ const logout = async () => {
 
     <v-divider />
 
-    <v-list nav density="comfortable">
+    <!-- ⏳ LOADING STATE -->
+    <div
+      v-if="!sidebarReady"
+      class="pa-4 text-grey text-caption"
+    >
+      Loading menu…
+    </div>
+
+    <!-- ✅ REAL MENU -->
+    <v-list
+      v-else
+      nav
+      density="comfortable"
+    >
       <!-- DASHBOARD -->
       <v-list-item
         to="/dean/dashboard"
@@ -42,7 +73,7 @@ const logout = async () => {
         Dashboard
       </v-list-item>
 
-      <!-- FACULTY (ALL DEANS CAN SEE) -->
+      <!-- FACULTY (ALL DEANS) -->
       <v-list-item
         to="/dean/faculty"
         prepend-icon="mdi-account-group"
@@ -81,7 +112,7 @@ const logout = async () => {
         Curriculums
       </v-list-item>
 
-      <!-- SCHEDULES (ALL DEANS CAN SEE) -->
+      <!-- SCHEDULES (ALL DEANS) -->
       <v-list-item
         to="/dean/schedules"
         prepend-icon="mdi-calendar-clock"
