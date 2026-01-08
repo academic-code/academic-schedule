@@ -80,15 +80,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue"
+import { ref, onMounted, onBeforeUnmount, computed } from "vue"
 import { useClassStore } from "@/stores/useClassStore"
 import { useDeanDashboardStore } from "@/stores/useDeanDashboardStore"
+import { useSupabase } from "@/composables/useSupabase"
 
 import ClassTable from "@/components/classes/ClassTable.vue"
 import ClassDrawer from "@/components/classes/ClassDrawer.vue"
 
 const classStore = useClassStore()
 const dashboard = useDeanDashboardStore()
+const supabase = useSupabase()
 
 const drawer = ref(false)
 const editing = ref(false)
@@ -101,8 +103,17 @@ const isLocked = computed(
   () => dashboard.academicTerm?.is_locked === true
 )
 
-onMounted(() => {
-  classStore.fetchClasses()
+let channel: any
+
+onMounted(async () => {
+  await classStore.fetchClasses()
+  channel = classStore.bindRealtime()
+})
+
+onBeforeUnmount(() => {
+  if (channel) {
+    supabase.removeChannel(channel)
+  }
 })
 
 function openCreate() {

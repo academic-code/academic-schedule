@@ -40,7 +40,7 @@
         />
 
         <!-- Adviser (TS-safe bridge) -->
-        <!-- <v-select
+        <v-select
           v-model="adviserModel"
           label="Adviser"
           :items="advisers"
@@ -50,7 +50,7 @@
           :disabled="lockedFields"
           hint="Optional – can be assigned later"
           persistent-hint
-        /> -->
+        />
 
         <!-- Remarks (always editable) -->
         <v-text-field
@@ -82,7 +82,8 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch, computed } from "vue"
+import { reactive, watch, computed, onMounted } from "vue"
+import { useFacultyStore } from "@/stores/useFacultyStore"
 
 /* ================= PROPS ================= */
 
@@ -98,6 +99,10 @@ const emit = defineEmits<{
   (e: "save", payload: any): void
 }>()
 
+/* ================= STORES ================= */
+
+const facultyStore = useFacultyStore()
+
 /* ================= FORM ================= */
 
 const form = reactive({
@@ -106,6 +111,14 @@ const form = reactive({
   section: "",
   adviser_id: null as string | null,
   remarks: ""
+})
+
+/* ================= INIT ================= */
+
+onMounted(() => {
+  if (!facultyStore.faculty.length) {
+    facultyStore.fetchFaculty()
+  }
 })
 
 /* ================= WATCH ================= */
@@ -131,13 +144,7 @@ watch(
 )
 
 /* ================= LOCK RULES ================= */
-/**
- * Structural fields are locked when:
- * - Academic term is locked
- * - OR class is already published
- *
- * Remarks remain editable.
- */
+
 const lockedFields = computed(
   () => props.isLocked || props.item?.status === "PUBLISHED"
 )
@@ -148,11 +155,8 @@ const savingDisabled = computed(() =>
   !form.program || !form.section || !form.year_level
 )
 
-/* ================= ADVISER TS BRIDGE ================= */
-/**
- * Vuetify expects: null | undefined
- * App uses: string | null
- */
+/* ================= ADVISER MODEL (TS SAFE) ================= */
+
 const adviserModel = computed<string | undefined>({
   get: () => form.adviser_id ?? undefined,
   set: (val) => {
@@ -160,16 +164,20 @@ const adviserModel = computed<string | undefined>({
   }
 })
 
-/* ================= ADVISERS (READY) ================= */
+/* ================= ADVISERS LIST ================= */
 /**
- * Placeholder for faculty store:
- * [
- *   { id: "uuid", name: "Juan Dela Cruz" }
- * ]
+ * ✔ Same department
+ * ✔ Active only
+ * ✔ Clean display name
  */
-const advisers = computed(() => {
-  return []
-})
+const advisers = computed(() =>
+  facultyStore.faculty
+    .filter(f => f.is_active)
+    .map(f => ({
+      id: f.id,
+      name: `${f.first_name} ${f.last_name}`
+    }))
+)
 
 /* ================= SAVE ================= */
 
@@ -183,3 +191,4 @@ function save() {
   })
 }
 </script>
+

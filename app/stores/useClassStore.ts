@@ -51,7 +51,10 @@ export const useClassStore = defineStore("classStore", {
   actions: {
     /* ---------- UI ---------- */
 
-    showSnackbar(text: string, color: "success" | "error" | "info" = "success") {
+    showSnackbar(
+      text: string,
+      color: "success" | "error" | "info" = "success"
+    ) {
       this.snackbar = { show: true, text, color }
     },
 
@@ -59,7 +62,7 @@ export const useClassStore = defineStore("classStore", {
       this.snackbar.show = false
     },
 
-    /* ---------- TOKEN ---------- */
+    /* ---------- AUTH ---------- */
 
     async getAccessToken(): Promise<string> {
       const supabase = useSupabase()
@@ -86,8 +89,7 @@ export const useClassStore = defineStore("classStore", {
           headers: { Authorization: `Bearer ${token}` }
         })
       } catch (err: any) {
-        const message = err?.message || "Failed to load classes"
-        this.error = message
+        this.error = err?.message || "Failed to load classes"
       } finally {
         this.loading = false
       }
@@ -95,36 +97,34 @@ export const useClassStore = defineStore("classStore", {
 
     /* ---------- CREATE ---------- */
 
- async createClass(payload: ClassFormPayload) {
-  this.saving = true
-  this.error = null
+    async createClass(payload: ClassFormPayload) {
+      this.saving = true
+      this.error = null
 
-  try {
-    const token = await this.getAccessToken()
+      try {
+        const token = await this.getAccessToken()
 
-    const created = await $fetch<ClassRow>("/api/dean/classes", {
-      method: "POST",
-      body: payload,
-      headers: { Authorization: `Bearer ${token}` }
-    })
+        await $fetch("/api/dean/classes", {
+          method: "POST",
+          body: payload,
+          headers: { Authorization: `Bearer ${token}` }
+        })
 
-    this.classes.push(created)
-    this.showSnackbar("Class created successfully", "success")
-  } catch (err: any) {
-    const message =
-      err?.data?.message ||
-      err?.message ||
-      "Failed to create class"
+        // ✅ SINGLE SOURCE OF TRUTH
+        await this.fetchClasses()
+        this.showSnackbar("Class created successfully")
+      } catch (err: any) {
+        const message =
+          err?.data?.message ||
+          err?.message ||
+          "Failed to create class"
 
-    // 🔴 DUPLICATE UX
-    this.showSnackbar(message, "error")
-    this.error = message
-    throw err
-  } finally {
-    this.saving = false
-  }
-}
-,
+        this.showSnackbar(message, "error")
+        throw err
+      } finally {
+        this.saving = false
+      }
+    },
 
     /* ---------- UPDATE ---------- */
 
@@ -135,19 +135,17 @@ export const useClassStore = defineStore("classStore", {
       try {
         const token = await this.getAccessToken()
 
-        const updated = await $fetch<ClassRow>(`/api/dean/classes/${id}`, {
+        await $fetch(`/api/dean/classes/${id}`, {
           method: "PATCH",
           body: payload,
           headers: { Authorization: `Bearer ${token}` }
         })
 
-        const idx = this.classes.findIndex((c) => c.id === id)
-        if (idx !== -1) this.classes[idx] = { ...this.classes[idx], ...updated }
-
+        // ✅ SINGLE SOURCE OF TRUTH
+        await this.fetchClasses()
         this.showSnackbar("Class updated successfully")
       } catch (err: any) {
         const message = err?.message || "Failed to update class"
-        this.error = message
         this.showSnackbar(message, "error")
         throw err
       } finally {
@@ -169,11 +167,11 @@ export const useClassStore = defineStore("classStore", {
           headers: { Authorization: `Bearer ${token}` }
         })
 
-        this.classes = this.classes.filter((c) => c.id !== id)
+        // ✅ SINGLE SOURCE OF TRUTH
+        await this.fetchClasses()
         this.showSnackbar("Class deleted successfully", "info")
       } catch (err: any) {
         const message = err?.message || "Failed to delete class"
-        this.error = message
         this.showSnackbar(message, "error")
         throw err
       } finally {
@@ -191,10 +189,14 @@ export const useClassStore = defineStore("classStore", {
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "classes" },
-          () => this.fetchClasses()
+          () => {
+            this.fetchClasses()
+          }
         )
         .subscribe()
     },
+
+    /* ---------- CLEANUP ---------- */
 
     clear() {
       this.classes = []
