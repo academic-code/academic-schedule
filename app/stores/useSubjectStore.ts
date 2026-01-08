@@ -2,6 +2,8 @@
 import { defineStore } from "pinia"
 import { useSupabase } from "@/composables/useSupabase"
 
+/* ================= TYPES ================= */
+
 export interface SubjectRow {
   id: string
   course_code: string
@@ -15,6 +17,7 @@ export interface SubjectRow {
   is_locked: boolean
   curriculum?: {
     id: string
+    program: string
     curriculum_code: string
     effective_year: number
   }
@@ -38,12 +41,14 @@ export interface SubjectFilters {
   semester?: number | null
 }
 
+/* ================= STORE ================= */
+
 export const useSubjectStore = defineStore("subjectStore", {
   state: () => ({
     subjects: [] as SubjectRow[],
+    curriculums: [] as any[],
     loading: false,
     saving: false,
-    error: null as string | null,
     snackbar: {
       show: false,
       text: "",
@@ -52,6 +57,8 @@ export const useSubjectStore = defineStore("subjectStore", {
   }),
 
   actions: {
+    /* ---------- UI ---------- */
+
     showSnackbar(
       text: string,
       color: "success" | "error" | "info" = "success"
@@ -59,28 +66,43 @@ export const useSubjectStore = defineStore("subjectStore", {
       this.snackbar = { show: true, text, color }
     },
 
-    async getToken() {
+    /* ---------- AUTH ---------- */
+
+    async token() {
       const { data } = await useSupabase().auth.getSession()
-      if (!data.session?.access_token) throw new Error("Unauthorized")
+      if (!data.session?.access_token) {
+        throw new Error("Unauthorized")
+      }
       return data.session.access_token
     },
 
-    /* ================= FETCH ================= */
+    /* ---------- CURRICULUM OPTIONS ---------- */
+
+    async fetchCurriculums() {
+      const token = await this.token()
+      this.curriculums = await $fetch<any[]>("/api/dean/curriculums", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+    },
+
+    /* ---------- FETCH SUBJECTS ---------- */
 
     async fetchSubjects(filters: SubjectFilters = {}) {
       this.loading = true
       try {
-        const token = await this.getToken()
-
-        this.subjects = await $fetch<any[]>("/api/dean/subjects", {
-          headers: { Authorization: `Bearer ${token}` },
-          query: {
-            program: filters.program ?? undefined,
-            curriculum_id: filters.curriculum_id ?? undefined,
-            year_level: filters.year_level ?? undefined,
-            semester: filters.semester ?? undefined
+        const token = await this.token()
+        this.subjects = await $fetch<SubjectRow[]>(
+          "/api/dean/subjects",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            query: {
+              program: filters.program ?? undefined,
+              curriculum_id: filters.curriculum_id ?? undefined,
+              year_level: filters.year_level ?? undefined,
+              semester: filters.semester ?? undefined
+            }
           }
-        })
+        )
       } catch (e: any) {
         this.showSnackbar(e.message || "Failed to load subjects", "error")
       } finally {
@@ -88,19 +110,22 @@ export const useSubjectStore = defineStore("subjectStore", {
       }
     },
 
-    /* ================= CREATE ================= */
+    /* ---------- CREATE ---------- */
 
     async createSubject(payload: SubjectPayload) {
       this.saving = true
       try {
-        const token = await this.getToken()
-        const created = await $fetch("/api/dean/subjects", {
-          method: "POST",
-          body: payload,
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        const token = await this.token()
+        const created = await $fetch<SubjectRow>(
+          "/api/dean/subjects",
+          {
+            method: "POST",
+            body: payload,
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        )
 
-        this.subjects.push(created as SubjectRow)
+        this.subjects.push(created)
         this.showSnackbar("Subject created successfully")
       } catch (e: any) {
         this.showSnackbar(
@@ -115,20 +140,23 @@ export const useSubjectStore = defineStore("subjectStore", {
       }
     },
 
-    /* ================= UPDATE ================= */
+    /* ---------- UPDATE ---------- */
 
     async updateSubject(id: string, payload: Partial<SubjectPayload>) {
       this.saving = true
       try {
-        const token = await this.getToken()
-        const updated = await $fetch(`/api/dean/subjects/${id}`, {
-          method: "PATCH",
-          body: payload,
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        const token = await this.token()
+        const updated = await $fetch<SubjectRow>(
+          `/api/dean/subjects/${id}`,
+          {
+            method: "PATCH",
+            body: payload,
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        )
 
         const idx = this.subjects.findIndex(s => s.id === id)
-        if (idx !== -1) this.subjects[idx] = updated as SubjectRow
+        if (idx !== -1) this.subjects[idx] = updated
 
         this.showSnackbar("Subject updated successfully")
       } catch (e: any) {
@@ -139,11 +167,11 @@ export const useSubjectStore = defineStore("subjectStore", {
       }
     },
 
-    /* ================= DELETE ================= */
+    /* ---------- DELETE ---------- */
 
     async deleteSubject(id: string) {
       try {
-        const token = await this.getToken()
+        const token = await this.token()
         await $fetch(`/api/dean/subjects/${id}`, {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` }
@@ -153,6 +181,7 @@ export const useSubjectStore = defineStore("subjectStore", {
         this.showSnackbar("Subject deleted", "info")
       } catch (e: any) {
         this.showSnackbar(e.message || "Delete failed", "error")
+        throw e
       }
     }
   }
