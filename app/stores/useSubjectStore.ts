@@ -1,4 +1,3 @@
-// app/stores/useSubjectStore.ts
 import { defineStore } from "pinia"
 import { useSupabase } from "@/composables/useSupabase"
 
@@ -39,6 +38,7 @@ export interface SubjectFilters {
   curriculum_id?: string | null
   year_level?: number | null
   semester?: number | null
+  search?: string | null
 }
 
 /* ================= STORE ================= */
@@ -70,9 +70,7 @@ export const useSubjectStore = defineStore("subjectStore", {
 
     async token() {
       const { data } = await useSupabase().auth.getSession()
-      if (!data.session?.access_token) {
-        throw new Error("Unauthorized")
-      }
+      if (!data.session?.access_token) throw new Error("Unauthorized")
       return data.session.access_token
     },
 
@@ -80,7 +78,7 @@ export const useSubjectStore = defineStore("subjectStore", {
 
     async fetchCurriculums() {
       const token = await this.token()
-      this.curriculums = await $fetch<any[]>("/api/dean/curriculums", {
+      this.curriculums = await $fetch<any[]>("/api/dean/curriculums" as string, {
         headers: { Authorization: `Bearer ${token}` }
       })
     },
@@ -91,18 +89,16 @@ export const useSubjectStore = defineStore("subjectStore", {
       this.loading = true
       try {
         const token = await this.token()
-        this.subjects = await $fetch<SubjectRow[]>(
-          "/api/dean/subjects",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            query: {
-              program: filters.program ?? undefined,
-              curriculum_id: filters.curriculum_id ?? undefined,
-              year_level: filters.year_level ?? undefined,
-              semester: filters.semester ?? undefined
-            }
+        this.subjects = await $fetch("/api/dean/subjects", {
+          headers: { Authorization: `Bearer ${token}` },
+          query: {
+            program: filters.program ?? undefined,
+            curriculum_id: filters.curriculum_id ?? undefined,
+            year_level: filters.year_level ?? undefined,
+            semester: filters.semester ?? undefined,
+            search: filters.search ?? undefined
           }
-        )
+        })
       } catch (e: any) {
         this.showSnackbar(e.message || "Failed to load subjects", "error")
       } finally {
@@ -116,24 +112,23 @@ export const useSubjectStore = defineStore("subjectStore", {
       this.saving = true
       try {
         const token = await this.token()
-        const created = await $fetch<SubjectRow>(
-          "/api/dean/subjects",
-          {
-            method: "POST",
-            body: payload,
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        )
+        const created = await $fetch("/api/dean/subjects", {
+          method: "POST",
+          body: payload,
+          headers: { Authorization: `Bearer ${token}` }
+        })
 
-        this.subjects.push(created)
+        this.subjects.push(created as SubjectRow)
         this.showSnackbar("Subject created successfully")
       } catch (e: any) {
-        this.showSnackbar(
-          e?.status === 409
-            ? "Duplicate subject in the same curriculum"
-            : e.message,
-          "error"
-        )
+        if (e?.status === 409) {
+          this.showSnackbar(
+            `Duplicate subject: ${payload.course_code} already exists in Year ${payload.year_level}, Semester ${payload.semester}`,
+            "error"
+          )
+        } else {
+          this.showSnackbar(e.message || "Create failed", "error")
+        }
         throw e
       } finally {
         this.saving = false
@@ -146,21 +141,25 @@ export const useSubjectStore = defineStore("subjectStore", {
       this.saving = true
       try {
         const token = await this.token()
-        const updated = await $fetch<SubjectRow>(
-          `/api/dean/subjects/${id}`,
-          {
-            method: "PATCH",
-            body: payload,
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        )
+        const updated = await $fetch(`/api/dean/subjects/${id}`, {
+          method: "PATCH",
+          body: payload,
+          headers: { Authorization: `Bearer ${token}` }
+        })
 
         const idx = this.subjects.findIndex(s => s.id === id)
-        if (idx !== -1) this.subjects[idx] = updated
+        if (idx !== -1) this.subjects[idx] = updated as SubjectRow
 
         this.showSnackbar("Subject updated successfully")
       } catch (e: any) {
-        this.showSnackbar(e.message || "Update failed", "error")
+        if (e?.status === 409 && payload.course_code) {
+          this.showSnackbar(
+            `Duplicate subject detected: ${payload.course_code} already exists for the same year & semester.`,
+            "error"
+          )
+        } else {
+          this.showSnackbar(e.message || "Update failed", "error")
+        }
         throw e
       } finally {
         this.saving = false

@@ -1,4 +1,3 @@
-// server/api/dean/subjects/index.get.ts
 import { defineEventHandler, getQuery } from "h3"
 import { requireDeanWithSupabase } from "./_helpers"
 
@@ -6,10 +5,13 @@ export default defineEventHandler(async (event) => {
   const { supabase, departmentId } = await requireDeanWithSupabase(event)
   const query = getQuery(event)
 
-  const program = query.program as string | undefined
-  const curriculumId = query.curriculum_id as string | undefined
-  const yearLevel = query.year_level ? Number(query.year_level) : undefined
-  const semester = query.semester ? Number(query.semester) : undefined
+  const {
+    program,
+    curriculum_id,
+    year_level,
+    semester,
+    search
+  } = query
 
   let q = supabase
     .from("subjects")
@@ -34,12 +36,17 @@ export default defineEventHandler(async (event) => {
     .eq("department_id", departmentId)
 
   if (program) q = q.eq("curriculum.program", program)
-  if (curriculumId) q = q.eq("curriculum_id", curriculumId)
-  if (yearLevel) q = q.eq("year_level", yearLevel)
-  if (semester) q = q.eq("semester", semester)
+  if (curriculum_id) q = q.eq("curriculum_id", curriculum_id)
+  if (year_level) q = q.eq("year_level", Number(year_level))
+  if (semester) q = q.eq("semester", Number(semester))
+
+  if (search) {
+    q = q.or(
+      `course_code.ilike.%${search}%,description.ilike.%${search}%`
+    )
+  }
 
   const { data, error } = await q.order("course_code")
   if (error) throw error
-
   return data ?? []
 })

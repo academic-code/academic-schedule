@@ -1,4 +1,3 @@
-// server/api/dean/subjects/[id].patch.ts
 import { defineEventHandler, readBody, createError } from "h3"
 import { requireDeanWithSupabase, assertAcademicTermUnlocked } from "./_helpers"
 
@@ -14,6 +13,14 @@ export default defineEventHandler(async (event) => {
   await assertAcademicTermUnlocked(supabase)
 
   const body = await readBody(event)
+  const {
+    curriculum_id,
+    course_code,
+    year_level,
+    semester
+  } = body
+
+  /* ---------- LOAD EXISTING SUBJECT ---------- */
 
   const { data: existing } = await supabase
     .from("subjects")
@@ -26,23 +33,60 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: "Subject not found" })
   }
 
-  const { data, error } = await supabase
-    .from("subjects")
-    .update(body)
-    .eq("id", subjectId)
-    .select()
-    .single()
+  /* ---------- UPDATE ---------- */
 
-  if (error) throw error
+  try {
+    const { data, error } = await supabase
+      .from("subjects")
+      .update(body)
+      .eq("id", subjectId)
+      .select()
+      .single()
 
-  await supabase.from("audit_logs").insert({
-    user_id: userId,
-    action: "UPDATE",
-    entity_type: "SUBJECT",
-    entity_id: subjectId,
-    old_value: existing,
-    new_value: data
-  })
+    if (error) throw error
 
-  return data
+    await supabase.from("audit_logs").insert({
+      user_id: userId,
+      action: "UPDATE",
+      entity_type: "SUBJECT",
+      entity_id: subjectId,
+      old_value: existing,
+      new_value: data
+    })
+
+    return data
+  } catch (err: any) {
+    /* ---------- DUPLICATE HANDLER ---------- */
+
+    if (err?.code === "23505") {
+      // Find the conflicting subject
+      const { data: duplicate } = await supabase
+        .from("subjects")
+        .select(`
+          course_code,
+          description,
+          year_level,
+          semester
+        `)
+        .eq("curriculum_id", curriculum_id ?? existing.curriculum_id)
+        .eq("course_code", course_code)
+        .eq("year_level", year_level)
+        .eq("semester", semester)
+        .neq("id", subjectId)
+        .maybeSingle()
+
+      const detail = duplicate
+        ? `Duplicate entry detected:
+${duplicate.course_code} – ${duplicate.description}
+Year ${duplicate.year_level}, Semester ${duplicate.semester}`
+        : "Duplicate subject detected in the same curriculum."
+
+      throw createError({
+        statusCode: 409,
+        message: detail
+      })
+    }
+
+    throw err
+  }
 })
