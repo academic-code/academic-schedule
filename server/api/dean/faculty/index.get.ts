@@ -23,14 +23,15 @@ export default defineEventHandler(async (event) => {
 
   if (error) throw error
 
-  return (data ?? []).map((f: any) => ({
-    id: f.id,
-    first_name: f.first_name,
-    last_name: f.last_name,
-    middle_name: f.middle_name,
-    faculty_type: f.faculty_type,
-    is_active: f.is_active,
-    email: Array.isArray(f.users) ? f.users[0]?.email ?? "" : "",
-    created_at: f.created_at
-  }))
+ return (data ?? []).map((f: any) => ({
+  id: f.id,
+  first_name: f.first_name,
+  last_name: f.last_name,
+  middle_name: f.middle_name,
+  faculty_type: f.faculty_type,
+  is_active: f.is_active,
+  email: f.users?.email ?? "",   // ✅ FIX
+  created_at: f.created_at
+}))
+
 })

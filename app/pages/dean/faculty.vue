@@ -53,13 +53,14 @@
     </v-alert>
 
     <!-- TABLE -->
-    <FacultyTable
-      :items="filteredFaculty"
-      :loading="store.loading"
-      :locked="isLocked"
-      @edit="openEdit"
-      @toggle="toggleStatus"
-    />
+<FacultyTable
+  :items="filteredFaculty"
+  :loading="store.loading"
+  :locked="isLocked"
+  @edit="openEdit"
+  @toggle="toggleStatus"
+  @resend="resendInvite"
+/>
 
     <!-- DRAWER -->
     <FacultyDrawer
@@ -164,6 +165,10 @@ async function handleSave(payload: any) {
     await store.createFaculty(payload)
   }
   drawer.value = false
+}
+
+async function resendInvite(item: any) {
+  await store.resendInvite(item.id)
 }
 
 async function toggleStatus(item: any) {

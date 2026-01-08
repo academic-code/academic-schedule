@@ -5,54 +5,75 @@
     persistent
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <v-card>
-      <v-card-title class="font-weight-bold">
-        {{ editing ? 'Edit Faculty' : 'New Faculty' }}
+    <v-card class="rounded-lg">
+      <v-card-title class="font-weight-bold text-h6">
+        {{ editing ? "Edit Faculty" : "New Faculty" }}
       </v-card-title>
 
-      <v-card-text class="pt-4">
-        <v-text-field
-          v-model="form.first_name"
-          label="First Name"
-          required
-        />
+      <v-divider />
 
-        <v-text-field
-          v-model="form.middle_name"
-          label="Middle Name (optional)"
-        />
+      <v-card-text class="pt-6">
+        <v-row dense>
+          <v-col cols="12" md="6">
+            <v-text-field
+              v-model="form.first_name"
+              label="First Name"
+              variant="outlined"
+              required
+            />
+          </v-col>
 
-        <v-text-field
-          v-model="form.last_name"
-          label="Last Name"
-          required
-        />
+          <v-col cols="12" md="6">
+            <v-text-field
+              v-model="form.middle_name"
+              label="Middle Name"
+              variant="outlined"
+            />
+          </v-col>
 
-        <!-- EMAIL ONLY ON CREATE -->
-        <v-text-field
-          v-if="!editing"
-          v-model="form.email"
-          label="Email"
-          type="email"
-          required
-        />
+          <v-col cols="12">
+            <v-text-field
+              v-model="form.last_name"
+              label="Last Name"
+              variant="outlined"
+              required
+            />
+          </v-col>
 
-        <v-select
-          v-model="form.faculty_type"
-          label="Faculty Type"
-          :items="facultyTypes"
-          required
-        />
+          <v-col cols="12" v-if="!editing">
+            <v-text-field
+              v-model="form.email"
+              label="Email Address"
+              type="email"
+              variant="outlined"
+              required
+            />
+          </v-col>
+
+          <v-col cols="12">
+            <v-select
+              v-model="form.faculty_type"
+              label="Faculty Type"
+              :items="facultyTypes"
+              variant="outlined"
+              required
+            />
+          </v-col>
+        </v-row>
       </v-card-text>
 
-      <v-card-actions>
+      <v-divider />
+
+      <v-card-actions class="pa-4">
         <v-spacer />
         <v-btn variant="text" @click="$emit('update:modelValue', false)">
           Cancel
         </v-btn>
+
         <v-btn
           color="primary"
-          :disabled="!canSave"
+          :loading="saving"
+          :disabled="!canSave || saving"
           @click="save"
         >
           Save
@@ -64,6 +85,9 @@
 
 <script setup lang="ts">
 import { reactive, watch, computed } from "vue"
+import { useFacultyStore } from "@/stores/useFacultyStore"
+
+const store = useFacultyStore()
 
 const props = defineProps<{
   modelValue: boolean
@@ -72,6 +96,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits(["update:modelValue", "save"])
+
+const saving = computed(() => store.saving)
 
 const form = reactive({
   email: "",
@@ -115,12 +141,7 @@ const canSave = computed(() =>
 
 function save() {
   const payload: any = { ...form }
-
-  // 🚨 CRITICAL FIX: DO NOT SEND EMAIL ON UPDATE
-  if (props.editing) {
-    delete payload.email
-  }
-
+  if (props.editing) delete payload.email
   emit("save", payload)
 }
 </script>

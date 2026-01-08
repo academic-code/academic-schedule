@@ -60,6 +60,22 @@
           </template>
         </v-tooltip>
 
+          <v-tooltip text="Resend Invite">
+  <template #activator="{ props }">
+    <v-btn
+      v-bind="props"
+      icon="mdi-email-send"
+      size="small"
+      color="info"
+      variant="tonal"
+      :disabled="locked || !item.email"
+      @click="$emit('resend', item)"
+    />
+  </template>
+</v-tooltip>
+
+
+
         <v-tooltip
           :text="item.is_active ? 'Deactivate Faculty' : 'Activate Faculty'"
         >
@@ -97,7 +113,7 @@ defineProps<{
   locked: boolean
 }>()
 
-defineEmits(["edit", "toggle"])
+defineEmits(["edit", "toggle", "resend"])
 
 const headers = [
   { title: "Name", value: "name" },

@@ -93,35 +93,39 @@ export const useFacultyStore = defineStore("facultyStore", {
 
     /* ---------- CREATE ---------- */
 
-    async createFaculty(payload: FacultyPayload) {
-      this.saving = true
-      this.error = null
+ async createFaculty(payload: FacultyPayload) {
+  this.saving = true
+  this.error = null
 
-      try {
-        const token = await this.token()
-        const created = await $fetch<FacultyRow>(
-          "/api/dean/faculty",
-          {
-            method: "POST",
-            body: payload,
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        )
+  try {
+    const token = await this.token()
 
-        this.faculty.unshift(created)
-        this.showSnackbar("Faculty created successfully")
-      } catch (err: any) {
-        const message =
-          err?.data?.message ||
-          err?.message ||
-          "Failed to create faculty"
-        this.error = message
-        this.showSnackbar(message, "error")
-        throw err
-      } finally {
-        this.saving = false
+    await $fetch(
+      "/api/dean/faculty",
+      {
+        method: "POST",
+        body: payload,
+        headers: { Authorization: `Bearer ${token}` }
       }
-    },
+    )
+
+    // ✅ IMPORTANT: refetch so email is included
+    await this.fetchFaculty()
+
+    this.showSnackbar("Faculty created successfully")
+  } catch (err: any) {
+    const message =
+      err?.data?.message ||
+      err?.message ||
+      "Failed to create faculty"
+
+    this.error = message
+    this.showSnackbar(message, "error")
+    throw err
+  } finally {
+    this.saving = false
+  }
+},
 
     /* ---------- UPDATE ---------- */
 
@@ -196,6 +200,31 @@ export const useFacultyStore = defineStore("facultyStore", {
         this.saving = false
       }
     },
+
+    async resendInvite(id: string) {
+  try {
+    const token = await this.token()
+
+    await $fetch(
+      `/api/dean/faculty/${id}/resend-invite`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      }
+    )
+
+    this.showSnackbar("Invitation email resent", "info")
+  } catch (err: any) {
+    const message =
+      err?.data?.message ||
+      err?.message ||
+      "Failed to resend invite"
+
+    this.showSnackbar(message, "error")
+    throw err
+  }
+},
+
 
     /* ---------- RESET ---------- */
 
