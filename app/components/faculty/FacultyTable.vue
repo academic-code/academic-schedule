@@ -15,7 +15,7 @@
         </div>
       </template>
 
-      <!-- EMAIL -->
+      <!-- EMAIL (FROM USERS TABLE) -->
       <template #item.email="{ item }">
         <span class="text-body-2">
           {{ item.email || "—" }}
@@ -44,7 +44,7 @@
         </v-chip>
       </template>
 
-      <!-- ACTIONS (WITH TOOLTIPS) -->
+      <!-- ACTIONS -->
       <template #item.actions="{ item }">
         <v-tooltip text="Edit Faculty">
           <template #activator="{ props }">

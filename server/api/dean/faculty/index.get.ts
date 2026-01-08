@@ -14,22 +14,23 @@ export default defineEventHandler(async (event) => {
       faculty_type,
       is_active,
       created_at,
-      user:users ( email )
+      users:users!faculty_user_id_fkey (
+        email
+      )
     `)
     .eq("department_id", departmentId)
     .order("last_name")
 
   if (error) throw error
 
-  return (data ?? []).map(f => ({
-  id: f.id,
-  first_name: f.first_name,
-  last_name: f.last_name,
-  middle_name: f.middle_name,
-  faculty_type: f.faculty_type,
-  is_active: f.is_active,
-  email: Array.isArray(f.user) ? f.user[0]?.email ?? "" : "",
-  created_at: f.created_at
-}))
-
+  return (data ?? []).map((f: any) => ({
+    id: f.id,
+    first_name: f.first_name,
+    last_name: f.last_name,
+    middle_name: f.middle_name,
+    faculty_type: f.faculty_type,
+    is_active: f.is_active,
+    email: Array.isArray(f.users) ? f.users[0]?.email ?? "" : "",
+    created_at: f.created_at
+  }))
 })

@@ -5,6 +5,9 @@ import {
 } from "./_helpers"
 
 export default defineEventHandler(async (event) => {
+  const config = useRuntimeConfig()
+  const SITE_URL = config.public.SITE_URL
+
   const { supabase, userId, departmentId } =
     await requireDeanWithSupabase(event)
 
@@ -19,20 +22,13 @@ export default defineEventHandler(async (event) => {
   } = await readBody(event)
 
   if (!email || !first_name || !last_name || !faculty_type) {
-    throw createError({
-      statusCode: 400,
-      message: "Missing required fields"
-    })
+    throw createError({ statusCode: 400, message: "Missing required fields" })
   }
 
   if (!["FULL_TIME", "PART_TIME"].includes(faculty_type)) {
-    throw createError({
-      statusCode: 400,
-      message: "Invalid faculty type"
-    })
+    throw createError({ statusCode: 400, message: "Invalid faculty type" })
   }
 
-  // 🔒 DUPLICATE EMAIL GUARD
   const { data: existingUser } = await supabase
     .from("users")
     .select("id")
@@ -46,20 +42,21 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // 1️⃣ Invite auth user
+  // ✅ INVITE WITH REDIRECT (FIX)
   const { data: invite, error: inviteErr } =
-    await supabase.auth.admin.inviteUserByEmail(email)
+    await supabase.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${SITE_URL}/auth/set-password`
+    })
 
   if (inviteErr || !invite.user?.id) {
     throw createError({
       statusCode: 409,
-      message: inviteErr?.message || "Failed to invite user"
+      message: inviteErr?.message || "Failed to invite faculty"
     })
   }
 
   const authUserId = invite.user.id
 
-  // 2️⃣ Insert users row
   await supabase.from("users").insert({
     id: authUserId,
     email,
@@ -68,7 +65,6 @@ export default defineEventHandler(async (event) => {
     is_active: true
   })
 
-  // 3️⃣ Insert faculty row
   const { data: faculty, error } = await supabase
     .from("faculty")
     .insert({
@@ -84,7 +80,6 @@ export default defineEventHandler(async (event) => {
 
   if (error) throw error
 
-  // 4️⃣ Audit
   await supabase.from("audit_logs").insert({
     user_id: userId,
     action: "CREATE",

@@ -131,7 +131,6 @@ let channel: any = null
 onMounted(async () => {
   await store.fetchFaculty()
 
-  // 🔄 REALTIME
   channel = supabase
     .channel("faculty-realtime")
     .on(

@@ -8,14 +8,14 @@ export interface FacultyRow {
   first_name: string
   last_name: string
   middle_name?: string | null
-  email: string
+  email: string              // ⬅️ from users table
   faculty_type: "FULL_TIME" | "PART_TIME"
   is_active: boolean
   created_at: string
 }
 
 export interface FacultyPayload {
-  email: string
+  email: string              // ⬅️ ONLY on create
   first_name: string
   last_name: string
   middle_name?: string | null
@@ -27,12 +27,9 @@ export interface FacultyPayload {
 export const useFacultyStore = defineStore("facultyStore", {
   state: () => ({
     faculty: [] as FacultyRow[],
-
     loading: false,
     saving: false,
-
     error: null as string | null,
-
     snackbar: {
       show: false,
       text: "",
@@ -41,11 +38,8 @@ export const useFacultyStore = defineStore("facultyStore", {
   }),
 
   getters: {
-    activeFaculty: (state) =>
-      state.faculty.filter(f => f.is_active),
-
-    inactiveFaculty: (state) =>
-      state.faculty.filter(f => !f.is_active)
+    activeFaculty: state => state.faculty.filter(f => f.is_active),
+    inactiveFaculty: state => state.faculty.filter(f => !f.is_active)
   },
 
   actions: {
@@ -66,11 +60,9 @@ export const useFacultyStore = defineStore("facultyStore", {
 
     async token(): Promise<string> {
       const { data, error } = await useSupabase().auth.getSession()
-
       if (error || !data.session?.access_token) {
         throw new Error("Unauthorized")
       }
-
       return data.session.access_token
     },
 
@@ -78,25 +70,20 @@ export const useFacultyStore = defineStore("facultyStore", {
 
     async fetchFaculty() {
       if (this.loading) return
-
       this.loading = true
       this.error = null
 
       try {
         const token = await this.token()
-
         this.faculty = await $fetch<FacultyRow[]>(
           "/api/dean/faculty",
-          {
-            headers: { Authorization: `Bearer ${token}` }
-          }
+          { headers: { Authorization: `Bearer ${token}` } }
         )
       } catch (err: any) {
         const message =
           err?.data?.message ||
           err?.message ||
           "Failed to load faculty"
-
         this.error = message
         this.showSnackbar(message, "error")
       } finally {
@@ -112,7 +99,6 @@ export const useFacultyStore = defineStore("facultyStore", {
 
       try {
         const token = await this.token()
-
         const created = await $fetch<FacultyRow>(
           "/api/dean/faculty",
           {
@@ -129,7 +115,6 @@ export const useFacultyStore = defineStore("facultyStore", {
           err?.data?.message ||
           err?.message ||
           "Failed to create faculty"
-
         this.error = message
         this.showSnackbar(message, "error")
         throw err
@@ -149,7 +134,6 @@ export const useFacultyStore = defineStore("facultyStore", {
 
       try {
         const token = await this.token()
-
         const updated = await $fetch<FacultyRow>(
           `/api/dean/faculty/${id}`,
           {
@@ -160,9 +144,7 @@ export const useFacultyStore = defineStore("facultyStore", {
         )
 
         const idx = this.faculty.findIndex(f => f.id === id)
-        if (idx !== -1) {
-          this.faculty[idx] = updated
-        }
+        if (idx !== -1) this.faculty[idx] = updated
 
         this.showSnackbar("Faculty updated successfully")
       } catch (err: any) {
@@ -170,7 +152,6 @@ export const useFacultyStore = defineStore("facultyStore", {
           err?.data?.message ||
           err?.message ||
           "Failed to update faculty"
-
         this.error = message
         this.showSnackbar(message, "error")
         throw err
@@ -187,7 +168,6 @@ export const useFacultyStore = defineStore("facultyStore", {
 
       try {
         const token = await this.token()
-
         const updated = await $fetch<FacultyRow>(
           `/api/dean/faculty/${id}`,
           {
@@ -198,14 +178,10 @@ export const useFacultyStore = defineStore("facultyStore", {
         )
 
         const idx = this.faculty.findIndex(f => f.id === id)
-        if (idx !== -1) {
-          this.faculty[idx] = updated
-        }
+        if (idx !== -1) this.faculty[idx] = updated
 
         this.showSnackbar(
-          isActive
-            ? "Faculty activated"
-            : "Faculty deactivated",
+          isActive ? "Faculty activated" : "Faculty deactivated",
           "info"
         )
       } catch (err: any) {
@@ -213,7 +189,6 @@ export const useFacultyStore = defineStore("facultyStore", {
           err?.data?.message ||
           err?.message ||
           "Failed to update faculty status"
-
         this.error = message
         this.showSnackbar(message, "error")
         throw err

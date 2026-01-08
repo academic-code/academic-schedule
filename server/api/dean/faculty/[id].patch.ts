@@ -17,6 +17,9 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
 
+  // 🚫 NEVER allow email update
+  delete body.email
+
   const { data: existing } = await supabase
     .from("faculty")
     .select("*")
@@ -28,23 +31,21 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: "Faculty not found" })
   }
 
-  // 🔒 BLOCK DEACTIVATION IF USED IN PUBLISHED SCHEDULES
+  // 🔐 BLOCK DEACTIVATION IF HAS SCHEDULES
   if (body.is_active === false) {
     const { count } = await supabase
       .from("schedules")
       .select("id", { count: "exact", head: true })
       .eq("faculty_id", facultyId)
-      .eq("status", "PUBLISHED")
 
     if ((count ?? 0) > 0) {
       throw createError({
         statusCode: 409,
-        message: "Cannot deactivate faculty with published schedules"
+        message: "Cannot deactivate faculty with assigned schedules"
       })
     }
   }
 
-  // 🔧 UPDATE FACULTY
   const { data: updated, error } = await supabase
     .from("faculty")
     .update(body)
@@ -54,7 +55,6 @@ export default defineEventHandler(async (event) => {
 
   if (error) throw error
 
-  // 🔁 SYNC USER STATUS
   if (typeof body.is_active === "boolean") {
     await supabase
       .from("users")
@@ -62,7 +62,6 @@ export default defineEventHandler(async (event) => {
       .eq("id", existing.user_id)
   }
 
-  // 🧾 AUDIT
   await supabase.from("audit_logs").insert({
     user_id: userId,
     action: "UPDATE",
