@@ -14,13 +14,13 @@ export default defineEventHandler(async (event) => {
   const { departmentId, userId } = await requireDean(event)
 
   /* ---------------- DEAN USER ---------------- */
-  const { data: deanUser, error: deanErr } = await supabase
+  const { data: deanUser } = await supabase
     .from("users")
     .select("id, email, first_name, middle_name, last_name")
     .eq("id", userId)
     .single()
 
-  if (deanErr || !deanUser) {
+  if (!deanUser) {
     throw createError({ statusCode: 404, message: "Dean user not found" })
   }
 
@@ -31,15 +31,17 @@ export default defineEventHandler(async (event) => {
   ].filter(Boolean).join(" ")
 
   /* ---------------- DEPARTMENT ---------------- */
-  const { data: department, error: deptErr } = await supabase
+  const { data: department } = await supabase
     .from("departments")
     .select("id, name, department_type")
     .eq("id", departmentId)
     .single()
 
-  if (deptErr || !department) {
+  if (!department) {
     throw createError({ statusCode: 404, message: "Department not found" })
   }
+
+  const isRegular = department.department_type === "REGULAR"
 
   /* ---------------- ACTIVE TERM ---------------- */
   const { data: academicTerm } = await supabase
@@ -105,16 +107,16 @@ export default defineEventHandler(async (event) => {
       is_locked: false
     },
     stats: {
-      classes: classesRes.count ?? 0,
-      subjects: subjectsRes.count ?? 0,
+      classes: isRegular ? classesRes.count ?? 0 : 0,
+      subjects: isRegular ? subjectsRes.count ?? 0 : 0,
       faculty: facultyRes.count ?? 0,
       draft_schedules: draftSchedulesRes.count ?? 0,
       published_schedules: publishedSchedulesRes.count ?? 0
     },
     warnings: {
-      unassigned_classes: unassignedClassesRes.count ?? 0,
+      unassigned_classes: isRegular ? unassignedClassesRes.count ?? 0 : 0,
       inactive_faculty: inactiveFacultyRes.count ?? 0,
-      locked_subjects: lockedSubjectsRes.count ?? 0
+      locked_subjects: isRegular ? lockedSubjectsRes.count ?? 0 : 0
     },
     notifications: notifications ?? [],
     recent_activity: recentActivity ?? []

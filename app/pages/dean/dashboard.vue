@@ -15,11 +15,15 @@
       Academic term is locked. Scheduling changes are disabled.
     </v-alert>
 
-    <StatCards :stats="dashboard.stats" />
+    <StatCards
+      :stats="dashboard.stats"
+      :department-type="departmentType"
+    />
 
     <WarningPanel
       v-if="dashboard.hasWarnings"
       :warnings="dashboard.warnings"
+      :department-type="departmentType"
       class="mb-6"
     />
 
@@ -50,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from "vue"
+import { onMounted, onBeforeUnmount, computed } from "vue"
 import { useDeanDashboardStore } from "@/stores/useDeanDashboardStore"
 import { useSupabase } from "@/composables/useSupabase"
 
@@ -62,6 +66,14 @@ import ActivityList from "@/components/dean/ActivityList.vue"
 
 const dashboard = useDeanDashboardStore()
 const supabase = useSupabase()
+
+/**
+ * ✅ GUARANTEED NON-UNDEFINED VALUE
+ * Defaulting to REGULAR prevents TS + runtime issues
+ */
+const departmentType = computed<"REGULAR" | "GENED" | "PE_NSTP">(() => {
+  return dashboard.department?.department_type ?? "REGULAR"
+})
 
 let channels: any[] = []
 
@@ -84,9 +96,7 @@ onMounted(async () => {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table },
-        () => {
-          dashboard.refresh()
-        }
+        () => dashboard.refresh()
       )
       .subscribe()
 
@@ -98,7 +108,6 @@ onBeforeUnmount(() => {
   channels.forEach((c) => supabase.removeChannel(c))
 })
 </script>
-
 
 <style scoped>
 .dashboard-container {

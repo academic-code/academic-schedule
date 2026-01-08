@@ -1,7 +1,7 @@
 <template>
   <v-row dense class="mb-6">
     <v-col
-      v-for="item in items"
+      v-for="item in visibleItems"
       :key="item.label"
       cols="12"
       sm="6"
@@ -19,40 +19,61 @@
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{ stats: any }>()
+import { computed } from "vue"
 
-const items = computed(() => [
+const props = defineProps<{
+  stats: any
+  departmentType: "REGULAR" | "GENED" | "PE_NSTP"
+}>()
+
+const allItems = computed(() => [
   {
+    key: "classes",
     label: "Classes",
     value: props.stats?.classes ?? 0,
     icon: "mdi-google-classroom",
     color: "primary"
   },
   {
+    key: "subjects",
     label: "Subjects",
     value: props.stats?.subjects ?? 0,
     icon: "mdi-book-open-page-variant",
     color: "indigo"
   },
   {
+    key: "faculty",
     label: "Faculty",
     value: props.stats?.faculty ?? 0,
     icon: "mdi-account-group",
     color: "teal"
   },
   {
+    key: "draft",
     label: "Draft Schedules",
     value: props.stats?.draft_schedules ?? 0,
     icon: "mdi-pencil",
     color: "orange"
   },
   {
+    key: "published",
     label: "Published",
     value: props.stats?.published_schedules ?? 0,
     icon: "mdi-check-circle",
     color: "green"
   }
 ])
+
+const visibleItems = computed(() => {
+  if (props.departmentType === "REGULAR") {
+    return allItems.value
+  }
+
+  // GENED / PE_NSTP
+  return allItems.value.filter(
+    i => !["classes", "subjects"].includes(i.key)
+  )
+})
 </script>
 
 <style scoped>
