@@ -5,11 +5,13 @@
     @update:model-value="emit('update:modelValue', $event)"
   >
     <v-card>
+      <!-- TITLE -->
       <v-card-title class="font-weight-bold">
         {{ editing ? "Edit Subject" : "New Subject" }}
       </v-card-title>
 
       <v-card-text class="pt-4">
+        <!-- CURRICULUM GUARD -->
         <v-alert
           v-if="!curriculumId"
           type="warning"
@@ -19,27 +21,31 @@
           Please select a curriculum before adding a subject.
         </v-alert>
 
+        <!-- BASIC INFO -->
         <v-select
           v-model="form.subject_type"
           label="Subject Type"
-          :items="['MAJOR', 'GENED', 'PE_NSTP']"
+          :items="SUBJECT_TYPES"
           :disabled="locked"
           required
         />
 
         <v-text-field
-          v-model="form.course_code"
+          v-model.trim="form.course_code"
           label="Course Code"
           :disabled="locked"
           required
         />
 
         <v-text-field
-          v-model="form.description"
+          v-model.trim="form.description"
           label="Description"
           :disabled="locked"
           required
         />
+
+        <!-- ACADEMIC PLACEMENT -->
+        <v-divider class="my-4" />
 
         <v-row dense>
           <v-col cols="6">
@@ -48,6 +54,7 @@
               label="Year Level"
               :items="[1,2,3,4,5,6]"
               :disabled="locked"
+              required
             />
           </v-col>
 
@@ -55,19 +62,24 @@
             <v-select
               v-model="form.semester"
               label="Semester"
-              :items="[1,2]"
+              :items="[1,2,3]"
               :disabled="locked"
+              required
             />
           </v-col>
         </v-row>
+
+        <!-- UNITS -->
+        <v-divider class="my-4" />
 
         <v-row dense>
           <v-col cols="6">
             <v-text-field
               v-model.number="form.lec_units"
               type="number"
-              label="Lecture Units"
               min="0"
+              label="Lecture Units"
+              :disabled="locked"
             />
           </v-col>
 
@@ -75,18 +87,29 @@
             <v-text-field
               v-model.number="form.lab_units"
               type="number"
-              label="Lab Units"
               min="0"
+              label="Lab Units"
+              :disabled="locked"
             />
           </v-col>
         </v-row>
+
+        <!-- TOTAL -->
+        <div class="text-caption text-grey mt-2">
+          Total Units: <strong>{{ totalUnits }}</strong>
+        </div>
       </v-card-text>
 
+      <!-- ACTIONS -->
       <v-card-actions>
         <v-spacer />
-        <v-btn variant="text" @click="emit('update:modelValue', false)">
+        <v-btn
+          variant="text"
+          @click="emit('update:modelValue', false)"
+        >
           Cancel
         </v-btn>
+
         <v-btn
           color="primary"
           :disabled="!canSave"
@@ -102,6 +125,12 @@
 <script setup lang="ts">
 import { reactive, watch, computed } from "vue"
 
+/* ================= CONSTANTS ================= */
+
+const SUBJECT_TYPES = ["MAJOR", "GENED", "PE_NSTP"]
+
+/* ================= PROPS ================= */
+
 const props = defineProps<{
   modelValue: boolean
   editing: boolean
@@ -114,6 +143,8 @@ const emit = defineEmits<{
   (e: "save", payload: any): void
 }>()
 
+/* ================= STATE ================= */
+
 const form = reactive({
   subject_type: "MAJOR",
   course_code: "",
@@ -123,6 +154,8 @@ const form = reactive({
   lec_units: 0,
   lab_units: 0
 })
+
+/* ================= WATCH ================= */
 
 watch(
   () => props.item,
@@ -152,17 +185,29 @@ watch(
   { immediate: true }
 )
 
-const locked = computed(() => false)
+/* ================= COMPUTED ================= */
+
+const locked = computed(() => !!props.item?.is_locked)
+
+const totalUnits = computed(
+  () => (form.lec_units || 0) + (form.lab_units || 0)
+)
 
 const canSave = computed(() =>
   !!props.curriculumId &&
+  !locked.value &&
   !!form.course_code &&
   !!form.description &&
-  !!form.subject_type
+  SUBJECT_TYPES.includes(form.subject_type) &&
+  [1,2,3].includes(form.semester) &&
+  form.year_level >= 1
 )
 
+/* ================= ACTION ================= */
+
 function save() {
-  if (!props.curriculumId) return
+  if (!canSave.value) return
+
   emit("save", {
     ...form,
     curriculum_id: props.curriculumId

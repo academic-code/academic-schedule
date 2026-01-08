@@ -31,6 +31,13 @@ export interface SubjectPayload {
   lab_units?: number
 }
 
+export interface SubjectFilters {
+  program?: string | null
+  curriculum_id?: string | null
+  year_level?: number | null
+  semester?: number | null
+}
+
 export const useSubjectStore = defineStore("subjectStore", {
   state: () => ({
     subjects: [] as SubjectRow[],
@@ -45,7 +52,10 @@ export const useSubjectStore = defineStore("subjectStore", {
   }),
 
   actions: {
-    showSnackbar(text: string, color: "success" | "error" | "info" = "success") {
+    showSnackbar(
+      text: string,
+      color: "success" | "error" | "info" = "success"
+    ) {
       this.snackbar = { show: true, text, color }
     },
 
@@ -55,13 +65,21 @@ export const useSubjectStore = defineStore("subjectStore", {
       return data.session.access_token
     },
 
-    async fetchSubjects(filters: any = {}) {
+    /* ================= FETCH ================= */
+
+    async fetchSubjects(filters: SubjectFilters = {}) {
       this.loading = true
       try {
         const token = await this.getToken()
-        this.subjects = await $fetch("/api/dean/subjects", {
+
+        this.subjects = await $fetch<any[]>("/api/dean/subjects", {
           headers: { Authorization: `Bearer ${token}` },
-          query: filters
+          query: {
+            program: filters.program ?? undefined,
+            curriculum_id: filters.curriculum_id ?? undefined,
+            year_level: filters.year_level ?? undefined,
+            semester: filters.semester ?? undefined
+          }
         })
       } catch (e: any) {
         this.showSnackbar(e.message || "Failed to load subjects", "error")
@@ -69,6 +87,8 @@ export const useSubjectStore = defineStore("subjectStore", {
         this.loading = false
       }
     },
+
+    /* ================= CREATE ================= */
 
     async createSubject(payload: SubjectPayload) {
       this.saving = true
@@ -79,7 +99,8 @@ export const useSubjectStore = defineStore("subjectStore", {
           body: payload,
           headers: { Authorization: `Bearer ${token}` }
         })
-        this.subjects.push(created as any)
+
+        this.subjects.push(created as SubjectRow)
         this.showSnackbar("Subject created successfully")
       } catch (e: any) {
         this.showSnackbar(
@@ -94,6 +115,8 @@ export const useSubjectStore = defineStore("subjectStore", {
       }
     },
 
+    /* ================= UPDATE ================= */
+
     async updateSubject(id: string, payload: Partial<SubjectPayload>) {
       this.saving = true
       try {
@@ -103,8 +126,10 @@ export const useSubjectStore = defineStore("subjectStore", {
           body: payload,
           headers: { Authorization: `Bearer ${token}` }
         })
-        const idx = this.subjects.findIndex((s) => s.id === id)
-        if (idx !== -1) this.subjects[idx] = updated as any
+
+        const idx = this.subjects.findIndex(s => s.id === id)
+        if (idx !== -1) this.subjects[idx] = updated as SubjectRow
+
         this.showSnackbar("Subject updated successfully")
       } catch (e: any) {
         this.showSnackbar(e.message || "Update failed", "error")
@@ -114,6 +139,8 @@ export const useSubjectStore = defineStore("subjectStore", {
       }
     },
 
+    /* ================= DELETE ================= */
+
     async deleteSubject(id: string) {
       try {
         const token = await this.getToken()
@@ -121,7 +148,8 @@ export const useSubjectStore = defineStore("subjectStore", {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` }
         })
-        this.subjects = this.subjects.filter((s) => s.id !== id)
+
+        this.subjects = this.subjects.filter(s => s.id !== id)
         this.showSnackbar("Subject deleted", "info")
       } catch (e: any) {
         this.showSnackbar(e.message || "Delete failed", "error")
