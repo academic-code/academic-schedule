@@ -1,7 +1,7 @@
 <template>
   <v-row dense class="mb-6">
     <v-col
-      v-for="item in visibleItems"
+      v-for="item in items"
       :key="item.label"
       cols="12"
       sm="6"
@@ -12,6 +12,7 @@
           <v-icon :color="item.color">{{ item.icon }}</v-icon>
           <span class="kpi-label">{{ item.label }}</span>
         </div>
+
         <div class="kpi-value">{{ item.value }}</div>
       </v-card>
     </v-col>
@@ -21,58 +22,77 @@
 <script setup lang="ts">
 import { computed } from "vue"
 
+/* ---------------- PROPS ---------------- */
 const props = defineProps<{
-  stats: any
+  stats: {
+    classes: number
+    subjects: number
+    faculty: number
+    draft_schedules: number
+    published_schedules: number
+  }
   departmentType: "REGULAR" | "GENED" | "PE_NSTP"
 }>()
 
-const allItems = computed(() => [
-  {
-    key: "classes",
-    label: "Classes",
-    value: props.stats?.classes ?? 0,
-    icon: "mdi-google-classroom",
-    color: "primary"
-  },
-  {
-    key: "subjects",
-    label: "Subjects",
-    value: props.stats?.subjects ?? 0,
-    icon: "mdi-book-open-page-variant",
-    color: "indigo"
-  },
-  {
-    key: "faculty",
-    label: "Faculty",
-    value: props.stats?.faculty ?? 0,
-    icon: "mdi-account-group",
-    color: "teal"
-  },
-  {
-    key: "draft",
-    label: "Draft Schedules",
-    value: props.stats?.draft_schedules ?? 0,
-    icon: "mdi-pencil",
-    color: "orange"
-  },
-  {
-    key: "published",
-    label: "Published",
-    value: props.stats?.published_schedules ?? 0,
-    icon: "mdi-check-circle",
-    color: "green"
-  }
-])
-
-const visibleItems = computed(() => {
-  if (props.departmentType === "REGULAR") {
-    return allItems.value
+/* ---------------- KPI LOGIC ---------------- */
+const items = computed(() => {
+  // GENED / PE_NSTP → LIMITED KPIs
+  if (props.departmentType !== "REGULAR") {
+    return [
+      {
+        label: "Faculty",
+        value: props.stats.faculty,
+        icon: "mdi-account-group",
+        color: "teal"
+      },
+      {
+        label: "Draft Schedules",
+        value: props.stats.draft_schedules,
+        icon: "mdi-pencil",
+        color: "orange"
+      },
+      {
+        label: "Published",
+        value: props.stats.published_schedules,
+        icon: "mdi-check-circle",
+        color: "green"
+      }
+    ]
   }
 
-  // GENED / PE_NSTP
-  return allItems.value.filter(
-    i => !["classes", "subjects"].includes(i.key)
-  )
+  // REGULAR → FULL KPIs
+  return [
+    {
+      label: "Classes",
+      value: props.stats.classes,
+      icon: "mdi-google-classroom",
+      color: "primary"
+    },
+    {
+      label: "Subjects",
+      value: props.stats.subjects,
+      icon: "mdi-book-open-page-variant",
+      color: "indigo"
+    },
+    {
+      label: "Faculty",
+      value: props.stats.faculty,
+      icon: "mdi-account-group",
+      color: "teal"
+    },
+    {
+      label: "Draft Schedules",
+      value: props.stats.draft_schedules,
+      icon: "mdi-pencil",
+      color: "orange"
+    },
+    {
+      label: "Published",
+      value: props.stats.published_schedules,
+      icon: "mdi-check-circle",
+      color: "green"
+    }
+  ]
 })
 </script>
 

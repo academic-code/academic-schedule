@@ -25,11 +25,14 @@ export interface AcademicTerm {
 
 export interface DashboardStats {
   classes: number
-  subjects: number
+  subjects_major: number
+  subjects_minor: number
   faculty: number
   draft_schedules: number
   published_schedules: number
 }
+
+
 
 export interface DashboardWarnings {
   unassigned_classes: number
@@ -75,13 +78,14 @@ export const useDeanDashboardStore = defineStore("deanDashboard", {
       is_locked: false
     } as AcademicTerm,
 
-    stats: {
-      classes: 0,
-      subjects: 0,
-      faculty: 0,
-      draft_schedules: 0,
-      published_schedules: 0
-    } as DashboardStats,
+   stats: {
+  classes: 0,
+  subjects_major: 0,
+  subjects_minor: 0,
+  faculty: 0,
+  draft_schedules: 0,
+  published_schedules: 0
+  }as DashboardStats,
 
     warnings: {
       unassigned_classes: 0,
