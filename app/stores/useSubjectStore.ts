@@ -77,11 +77,11 @@ export const useSubjectStore = defineStore("subjectStore", {
     /* ---------- CURRICULUM OPTIONS ---------- */
 
     async fetchCurriculums() {
-      const token = await this.token()
-      this.curriculums = await $fetch<any[]>("/api/dean/curriculums" as string, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-    },
+        const token = await this.token()
+        this.curriculums = await $fetch<any[]>("/api/dean/curriculums" as string, {
+          headers: { Authorization: `Bearer ${token}` } as Record<string, string>
+        })
+      },
 
     /* ---------- FETCH SUBJECTS ---------- */
 
@@ -90,7 +90,7 @@ export const useSubjectStore = defineStore("subjectStore", {
       try {
         const token = await this.token()
         this.subjects = await $fetch("/api/dean/subjects", {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}` } as Record<string, string>,
           query: {
             program: filters.program ?? undefined,
             curriculum_id: filters.curriculum_id ?? undefined,
@@ -115,7 +115,7 @@ export const useSubjectStore = defineStore("subjectStore", {
         const created = await $fetch("/api/dean/subjects", {
           method: "POST",
           body: payload,
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` } as Record<string, string>
         })
 
         this.subjects.push(created as SubjectRow)
@@ -144,7 +144,7 @@ export const useSubjectStore = defineStore("subjectStore", {
         const updated = await $fetch(`/api/dean/subjects/${id}`, {
           method: "PATCH",
           body: payload,
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` } as Record<string, string>
         })
 
         const idx = this.subjects.findIndex(s => s.id === id)
@@ -173,7 +173,7 @@ export const useSubjectStore = defineStore("subjectStore", {
         const token = await this.token()
         await $fetch(`/api/dean/subjects/${id}`, {
           method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` } as Record<string, string>
         })
 
         this.subjects = this.subjects.filter(s => s.id !== id)
