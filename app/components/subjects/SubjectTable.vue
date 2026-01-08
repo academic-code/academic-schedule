@@ -1,32 +1,37 @@
 <template>
   <v-card elevation="1" class="pa-4">
     <!-- LEGEND -->
-           <h2>LEGEND</h2>
-    <div class="d-flex gap-3 mb-4">
-
+    <h3 class="mb-2">Legend</h3>
+    <div class="d-flex gap-3 mb-6">
       <v-chip size="small" color="success" variant="tonal">GENED</v-chip>
       <v-chip size="small" color="primary" variant="tonal">MAJOR</v-chip>
       <v-chip size="small" color="pink" variant="tonal">PE / NSTP</v-chip>
     </div>
 
-    <!-- GROUPED BY YEAR -->
+    <!-- GROUP BY YEAR -->
     <div
       v-for="(yearGroup, year) in grouped"
       :key="year"
-      class="mb-8"
+      class="mb-10"
     >
-      <!-- YEAR HEADER -->
-      <h3 class="mb-3">Year {{ year }}</h3>
+      <h3 class="mb-4">Year {{ year }}</h3>
 
-      <!-- GROUPED BY SEMESTER -->
+      <!-- GROUP BY SEMESTER -->
       <div
         v-for="(semesterGroup, semester) in yearGroup"
         :key="semester"
-        class="mb-6"
+        class="mb-8"
       >
-        <h4 class="text-grey mb-2">
-          Semester {{ semester }}
-        </h4>
+        <div class="d-flex justify-space-between align-center mb-2">
+          <h4 class="text-grey">
+            Semester {{ semester }}
+          </h4>
+
+          <!-- TOTAL UNITS -->
+          <strong class="text-primary">
+            Total Units: {{ semesterUnits(semesterGroup) }}
+          </strong>
+        </div>
 
         <v-data-table
           :headers="headers"
@@ -35,7 +40,7 @@
           density="comfortable"
           :loading="loading"
         >
-          <!-- COURSE CODE -->
+          <!-- CODE -->
           <template #item.course_code="{ item }">
             <strong>{{ item.course_code }}</strong>
           </template>
@@ -101,7 +106,7 @@
                   size="small"
                   color="error"
                   :disabled="item.is_locked"
-                  @click="$emit('delete', item.id)"
+                  @click="confirmDelete(item)"
                 >
                   <v-icon>mdi-delete</v-icon>
                 </v-btn>
@@ -109,7 +114,6 @@
             </v-tooltip>
           </template>
 
-          <!-- EMPTY -->
           <template #no-data>
             <div class="text-center pa-4 text-grey">
               No subjects in this semester.
@@ -118,23 +122,50 @@
         </v-data-table>
       </div>
     </div>
+
+    <!-- DELETE CONFIRMATION DIALOG -->
+    <v-dialog v-model="showConfirm" max-width="420">
+      <v-card>
+        <v-card-title class="font-weight-bold">
+          Confirm Delete
+        </v-card-title>
+
+        <v-card-text>
+          Are you sure you want to delete
+          <strong>{{ selected?.course_code }}</strong>
+          – {{ selected?.description }}?
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showConfirm = false">
+            Cancel
+          </v-btn>
+          <v-btn color="error" @click="emitDelete">
+            Delete
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 
+/* ---------- PROPS ---------- */
 const props = defineProps<{
   items: any[]
   loading: boolean
 }>()
 
-defineEmits<{
+/* ---------- EMITS ---------- */
+const emit = defineEmits<{
   (e: "edit", item: any): void
   (e: "delete", id: string): void
 }>()
 
-/* ---------- HEADERS (YEAR & SEM REMOVED) ---------- */
+/* ---------- HEADERS ---------- */
 const headers = [
   { title: "Code", value: "course_code" },
   { title: "Description", value: "description" },
@@ -144,28 +175,47 @@ const headers = [
   { title: "Actions", value: "actions", sortable: false }
 ]
 
-/* ---------- GROUP SUBJECTS BY YEAR → SEM ---------- */
+/* ---------- GROUPING ---------- */
 const grouped = computed(() => {
   const map: Record<number, Record<number, any[]>> = {}
 
   for (const s of props.items) {
-    const year = s.year_level as number
-    const sem = s.semester as number
+    const year = s.year_level
+    const sem = s.semester
 
-    const yearMap = map[year] ?? (map[year] = {})
-    if (!yearMap[sem]) {
-      yearMap[sem] = []
-    }
+    const yearMap = map[year] ??= {}
+    yearMap[sem] ??= []
     yearMap[sem].push(s)
   }
 
   return map
 })
 
+/* ---------- TOTAL UNITS ---------- */
+function semesterUnits(items: any[]) {
+  return items.reduce((sum, s) => sum + (s.total_units || 0), 0)
+}
+
 /* ---------- TYPE COLORS ---------- */
 function typeColor(type: string) {
   if (type === "GENED") return "success"
   if (type === "MAJOR") return "primary"
   return "pink"
+}
+
+/* ---------- DELETE CONFIRM ---------- */
+const showConfirm = ref(false)
+const selected = ref<any | null>(null)
+
+function confirmDelete(item: any) {
+  selected.value = item
+  showConfirm.value = true
+}
+
+function emitDelete() {
+  if (!selected.value) return
+  emit("delete", selected.value.id)
+  showConfirm.value = false
+  selected.value = null
 }
 </script>
