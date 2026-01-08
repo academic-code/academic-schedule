@@ -9,38 +9,51 @@ export default defineEventHandler(async (event) => {
   const facultyId = event.context.params?.id
 
   if (!facultyId) {
-    throw createError({ statusCode: 400, message: "Missing faculty id" })
+    throw createError({
+      statusCode: 400,
+      message: "Missing faculty id"
+    })
   }
 
-  const { data: faculty, error } = await supabase
+  // 1️⃣ Get faculty record (NO JOIN)
+  const { data: faculty, error: facultyErr } = await supabase
     .from("faculty")
-    .select(`
-      id,
-      users:users!faculty_user_id_fkey (
-        email
-      )
-    `)
+    .select("id, user_id")
     .eq("id", facultyId)
     .single()
 
-  if (error || !faculty) {
-    throw createError({ statusCode: 404, message: "Faculty not found" })
+  if (facultyErr || !faculty?.user_id) {
+    throw createError({
+      statusCode: 404,
+      message: "Faculty not found"
+    })
   }
 
-  // ✅ TS SAFE EMAIL EXTRACTION
-  const email = Array.isArray(faculty.users)
-    ? faculty.users[0]?.email ?? null
-    : null
+  // 2️⃣ Get user email directly
+  const { data: user, error: userErr } = await supabase
+    .from("users")
+    .select("email, last_login_at")
+    .eq("id", faculty.user_id)
+    .single()
 
-  if (!email) {
+  if (userErr || !user?.email) {
     throw createError({
       statusCode: 404,
       message: "Faculty email not found"
     })
   }
 
+  // 3️⃣ Block resend if already activated
+  if (user.last_login_at) {
+    throw createError({
+      statusCode: 409,
+      message: "Faculty already activated"
+    })
+  }
+
+  // 4️⃣ Resend invite
   const { error: inviteErr } =
-    await supabase.auth.admin.inviteUserByEmail(email, {
+    await supabase.auth.admin.inviteUserByEmail(user.email, {
       redirectTo: `${SITE_URL}/auth/set-password`
     })
 

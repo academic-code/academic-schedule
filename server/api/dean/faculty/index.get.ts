@@ -15,7 +15,8 @@ export default defineEventHandler(async (event) => {
       is_active,
       created_at,
       users:users!faculty_user_id_fkey (
-        email
+        email,
+        last_login_at
       )
     `)
     .eq("department_id", departmentId)
@@ -31,6 +32,7 @@ export default defineEventHandler(async (event) => {
     faculty_type: f.faculty_type,
     is_active: f.is_active,
     email: f.users?.email ?? "",
+    last_login_at: f.users?.last_login_at ?? null,
     created_at: f.created_at
   }))
 })

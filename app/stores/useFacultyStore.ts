@@ -9,10 +9,14 @@ export interface FacultyRow {
   last_name: string
   middle_name?: string | null
   email: string
+  last_login_at: string | null   // ✅ ADD THIS
   faculty_type: "FULL_TIME" | "PART_TIME"
   is_active: boolean
   created_at: string
 }
+
+
+
 
 export interface FacultyPayload {
   email?: string // ONLY on create

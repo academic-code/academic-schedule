@@ -53,14 +53,14 @@
     </v-alert>
 
     <!-- TABLE -->
-<FacultyTable
-  :items="filteredFaculty"
-  :loading="store.loading"
-  :locked="isLocked"
-  @edit="openEdit"
-  @toggle="toggleStatus"
-  @resend="resendInvite"
-/>
+    <FacultyTable
+      :items="filteredFaculty"
+      :loading="store.loading"
+      :locked="isLocked"
+      @edit="openEdit"
+      @toggle="toggleStatus"
+      @resend="resendInvite"
+    />
 
     <!-- DRAWER -->
     <FacultyDrawer
@@ -91,9 +91,13 @@ import { useSupabase } from "@/composables/useSupabase"
 import FacultyTable from "@/components/faculty/FacultyTable.vue"
 import FacultyDrawer from "@/components/faculty/FacultyDrawer.vue"
 
+/* ================= STORES ================= */
+
 const store = useFacultyStore()
 const dashboard = useDeanDashboardStore()
 const supabase = useSupabase()
+
+/* ================= STATE ================= */
 
 const drawer = ref(false)
 const editing = ref(false)
@@ -102,30 +106,49 @@ const selected = ref<any | null>(null)
 const search = ref("")
 const typeFilter = ref<string | null>(null)
 
+/* ================= CONSTANTS ================= */
+
 const typeOptions = [
   { title: "All", value: null },
   { title: "Full-Time", value: "FULL_TIME" },
   { title: "Part-Time", value: "PART_TIME" }
 ]
 
+/* ================= COMPUTED ================= */
+
 const isLocked = computed(
   () => dashboard.academicTerm?.is_locked === true
 )
 
+/**
+ * IMPORTANT:
+ * - status is DERIVED
+ * - NO DB change
+ * - prevents email disappearing after PATCH
+ * - drives resend / toggle logic correctly
+ */
 const filteredFaculty = computed(() => {
-  return store.faculty.filter(f => {
-    const matchesSearch =
-      !search.value ||
-      `${f.first_name} ${f.last_name} ${f.email}`
-        .toLowerCase()
-        .includes(search.value.toLowerCase())
+  return store.faculty
+    .map(f => ({
+      ...f,
+      status: f.last_login_at ? "ACTIVATED" : "PENDING"
+    }))
+    .filter(f => {
+      const matchesSearch =
+        !search.value ||
+        `${f.first_name} ${f.last_name} ${f.email}`
+          .toLowerCase()
+          .includes(search.value.toLowerCase())
 
-    const matchesType =
-      !typeFilter.value || f.faculty_type === typeFilter.value
+      const matchesType =
+        !typeFilter.value || f.faculty_type === typeFilter.value
 
-    return matchesSearch && matchesType
-  })
+      return matchesSearch && matchesType
+    })
 })
+
+
+/* ================= REALTIME ================= */
 
 let channel: any = null
 
@@ -139,12 +162,19 @@ onMounted(async () => {
       { event: "*", schema: "public", table: "faculty" },
       () => store.fetchFaculty()
     )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "users" },
+      () => store.fetchFaculty()
+    )
     .subscribe()
 })
 
 onBeforeUnmount(() => {
   if (channel) supabase.removeChannel(channel)
 })
+
+/* ================= ACTIONS ================= */
 
 function openCreate() {
   editing.value = false
@@ -168,10 +198,12 @@ async function handleSave(payload: any) {
 }
 
 async function resendInvite(item: any) {
+  if (item.status !== "PENDING") return
   await store.resendInvite(item.id)
 }
 
 async function toggleStatus(item: any) {
+  if (item.status !== "ACTIVATED") return
   await store.toggleFaculty(item.id, !item.is_active)
 }
 </script>
