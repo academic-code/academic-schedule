@@ -27,8 +27,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: "Faculty not found" })
   }
 
+  // ✅ TS SAFE EMAIL EXTRACTION
   const email = Array.isArray(faculty.users)
-    ? faculty.users[0]?.email
+    ? faculty.users[0]?.email ?? null
     : null
 
   if (!email) {

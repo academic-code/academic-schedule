@@ -8,14 +8,14 @@ export interface FacultyRow {
   first_name: string
   last_name: string
   middle_name?: string | null
-  email: string              // ⬅️ from users table
+  email: string
   faculty_type: "FULL_TIME" | "PART_TIME"
   is_active: boolean
   created_at: string
 }
 
 export interface FacultyPayload {
-  email: string              // ⬅️ ONLY on create
+  email?: string // ONLY on create
   first_name: string
   last_name: string
   middle_name?: string | null
@@ -70,6 +70,7 @@ export const useFacultyStore = defineStore("facultyStore", {
 
     async fetchFaculty() {
       if (this.loading) return
+
       this.loading = true
       this.error = null
 
@@ -93,39 +94,36 @@ export const useFacultyStore = defineStore("facultyStore", {
 
     /* ---------- CREATE ---------- */
 
- async createFaculty(payload: FacultyPayload) {
-  this.saving = true
-  this.error = null
+    async createFaculty(payload: FacultyPayload) {
+      this.saving = true
+      this.error = null
 
-  try {
-    const token = await this.token()
+      try {
+        const token = await this.token()
 
-    await $fetch(
-      "/api/dean/faculty",
-      {
-        method: "POST",
-        body: payload,
-        headers: { Authorization: `Bearer ${token}` }
+        await $fetch("/api/dean/faculty", {
+          method: "POST",
+          body: payload,
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        // ✅ ALWAYS rehydrate joined data
+        await this.fetchFaculty()
+
+        this.showSnackbar("Faculty created successfully")
+      } catch (err: any) {
+        const message =
+          err?.data?.message ||
+          err?.message ||
+          "Failed to create faculty"
+
+        this.error = message
+        this.showSnackbar(message, "error")
+        throw err
+      } finally {
+        this.saving = false
       }
-    )
-
-    // ✅ IMPORTANT: refetch so email is included
-    await this.fetchFaculty()
-
-    this.showSnackbar("Faculty created successfully")
-  } catch (err: any) {
-    const message =
-      err?.data?.message ||
-      err?.message ||
-      "Failed to create faculty"
-
-    this.error = message
-    this.showSnackbar(message, "error")
-    throw err
-  } finally {
-    this.saving = false
-  }
-},
+    },
 
     /* ---------- UPDATE ---------- */
 
@@ -138,17 +136,15 @@ export const useFacultyStore = defineStore("facultyStore", {
 
       try {
         const token = await this.token()
-        const updated = await $fetch<FacultyRow>(
-          `/api/dean/faculty/${id}`,
-          {
-            method: "PATCH",
-            body: payload,
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        )
 
-        const idx = this.faculty.findIndex(f => f.id === id)
-        if (idx !== -1) this.faculty[idx] = updated
+        await $fetch(`/api/dean/faculty/${id}`, {
+          method: "PATCH",
+          body: payload,
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        // ✅ DO NOT overwrite partial data
+        await this.fetchFaculty()
 
         this.showSnackbar("Faculty updated successfully")
       } catch (err: any) {
@@ -156,6 +152,7 @@ export const useFacultyStore = defineStore("facultyStore", {
           err?.data?.message ||
           err?.message ||
           "Failed to update faculty"
+
         this.error = message
         this.showSnackbar(message, "error")
         throw err
@@ -172,17 +169,15 @@ export const useFacultyStore = defineStore("facultyStore", {
 
       try {
         const token = await this.token()
-        const updated = await $fetch<FacultyRow>(
-          `/api/dean/faculty/${id}`,
-          {
-            method: "PATCH",
-            body: { is_active: isActive },
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        )
 
-        const idx = this.faculty.findIndex(f => f.id === id)
-        if (idx !== -1) this.faculty[idx] = updated
+        await $fetch(`/api/dean/faculty/${id}`, {
+          method: "PATCH",
+          body: { is_active: isActive },
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        // ✅ Same rule applies
+        await this.fetchFaculty()
 
         this.showSnackbar(
           isActive ? "Faculty activated" : "Faculty deactivated",
@@ -193,6 +188,7 @@ export const useFacultyStore = defineStore("facultyStore", {
           err?.data?.message ||
           err?.message ||
           "Failed to update faculty status"
+
         this.error = message
         this.showSnackbar(message, "error")
         throw err
@@ -201,30 +197,28 @@ export const useFacultyStore = defineStore("facultyStore", {
       }
     },
 
+    /* ---------- RESEND INVITE ---------- */
+
     async resendInvite(id: string) {
-  try {
-    const token = await this.token()
+      try {
+        const token = await this.token()
 
-    await $fetch(
-      `/api/dean/faculty/${id}/resend-invite`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
+        await $fetch(`/api/dean/faculty/${id}/resend-invite`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        this.showSnackbar("Invitation email resent", "info")
+      } catch (err: any) {
+        const message =
+          err?.data?.message ||
+          err?.message ||
+          "Failed to resend invite"
+
+        this.showSnackbar(message, "error")
+        throw err
       }
-    )
-
-    this.showSnackbar("Invitation email resent", "info")
-  } catch (err: any) {
-    const message =
-      err?.data?.message ||
-      err?.message ||
-      "Failed to resend invite"
-
-    this.showSnackbar(message, "error")
-    throw err
-  }
-},
-
+    },
 
     /* ---------- RESET ---------- */
 
