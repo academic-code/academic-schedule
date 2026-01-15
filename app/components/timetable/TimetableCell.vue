@@ -89,9 +89,16 @@ const periodSlots = computed(() => {
  * ACTIONS
  * ================================ */
 function openEditor() {
-  if (!props.editMode || !isStart.value || props.termLocked) return
-  emit('open-editor', cellKey.value)
+  if (!props.editMode || props.termLocked) return
+
+  // allow opening if:
+  // 1) empty cell
+  // 2) start of existing schedule
+  if (!schedule.value || isStart.value) {
+    emit('open-editor', cellKey.value)
+  }
 }
+
 </script>
 
 <template>
