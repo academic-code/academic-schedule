@@ -1,223 +1,173 @@
+// app/stores/useScheduleStore.ts
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useSupabase } from '@/composables/useSupabase'
-import { useFetch } from '#app'
 
-export const useScheduleStore = defineStore('schedule', () => {
-  /* ================================
-   * SUPABASE CLIENT
-   * ================================ */
+export type ViewMode = 'CLASS' | 'TEACHER'
+export type WeekDay = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT'
+export type ScheduleMode = 'F2F' | 'ONLINE' | 'ASYNC'
+export type ScheduleStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+
+export interface ScheduleRow {
+  id: string
+  academic_term_id: string
+  owner_department_id: string
+  target_department_id: string
+  department_id: string // still exists (matches target by CHECK)
+  class_id: string | null
+  subject_id: string
+  faculty_id: string | null
+  room_id: string | null
+  day: WeekDay
+  start_period_id: string
+  end_period_id: string
+  mode: ScheduleMode
+  status: ScheduleStatus
+  created_by: string | null
+  created_at: string
+}
+
+export interface SaveResult {
+  success: boolean
+  schedule?: ScheduleRow
+  conflicts?: any[]
+}
+
+export const useScheduleStore = defineStore('schedule2', () => {
   const supabase = useSupabase()
 
-  /* ================================
-   * STATE
-   * ================================ */
-  const schedules = ref<any[]>([])
-  const activeTermId = ref<string | null>(null)
-  const isLoading = ref(false)
+  const termId = ref<string | null>(null)
+  const schedules = ref<ScheduleRow[]>([])
+  const loading = ref(false)
   const lastError = ref<string | null>(null)
 
-  let realtimeChannel: any = null
-
-  /* ================================
-   * GETTERS
-   * ================================ */
-  const publishedSchedules = computed(() =>
-    schedules.value.filter(s => s.status === 'PUBLISHED')
+  const activeSchedules = computed(() =>
+    schedules.value.filter(s => s.status !== 'ARCHIVED')
   )
 
-  const schedulesByClass = (classId: string) =>
-    publishedSchedules.value.filter(s => s.class_id === classId)
-
-  const schedulesByFaculty = (facultyId: string) =>
-    publishedSchedules.value.filter(s => s.faculty_id === facultyId)
-
-  const schedulesByRoom = (roomId: string) =>
-    publishedSchedules.value.filter(s => s.room_id === roomId)
-
-  /* ================================
-   * FETCH (TERM-SCOPED)
-   * ================================ */
-  async function fetchSchedules(termId: string) {
-    if (!termId) return
-    if (activeTermId.value === termId && schedules.value.length) return
-
-    reset()
-    isLoading.value = true
-    activeTermId.value = termId
-
-    const { data, error } = await supabase
-      .from('schedules')
-      .select('*')
-      .eq('academic_term_id', termId)
-
-    if (error) {
-      lastError.value = error.message
-      isLoading.value = false
-      return
+  async function authHeaders(): Promise<Record<string, string>> {
+    const { data, error } = await supabase.auth.getSession()
+    if (error || !data.session?.access_token) {
+      throw new Error('No active session')
     }
-
-    schedules.value = data ?? []
-    isLoading.value = false
-
-    subscribeRealtime(termId)
+    return { Authorization: `Bearer ${data.session.access_token}` }
   }
 
-  /* ================================
-   * SAVE (CREATE / UPDATE / PUBLISH)
-   * ================================ */
-  async function saveSchedule(payload: any) {
+  async function fetchList(activeTermId: string) {
+    if (!activeTermId) return
+    if (termId.value === activeTermId && schedules.value.length) return
+
+    termId.value = activeTermId
+    loading.value = true
     lastError.value = null
 
-    const { data, error } = await useFetch<{ success?: boolean; [key: string]: any }>('/api/schedules/save', {
-      method: 'POST',
-      body: payload
-    })
+    try {
+      const headers = await authHeaders()
 
-    if (error.value) {
-      lastError.value = error.value.message
-      throw error.value
+      const res = await $fetch<ScheduleRow[]>('/api/schedules/list', {
+        method: 'GET',
+        headers,
+        query: { term_id: activeTermId }
+      })
+
+      schedules.value = res ?? []
+    } catch (err: any) {
+      lastError.value = err?.data?.message || err?.message || 'Failed to load schedules'
+    } finally {
+      loading.value = false
     }
-
-    if (data.value?.success === false) {
-      // conflict response (expected shape)
-      return data.value
-    }
-
-    return data.value
   }
 
-  /* ================================
-   * ARCHIVE
-   * ================================ */
-  async function archiveSchedule(scheduleId: string) {
+  async function saveSchedule(payload: any): Promise<SaveResult> {
     lastError.value = null
 
-    const { error } = await useFetch('/api/schedules/archive', {
-      method: 'POST',
-      body: { schedule_id: scheduleId }
-    })
+    try {
+      const headers = await authHeaders()
 
-    if (error.value) {
-      lastError.value = error.value.message
-      throw error.value
+      const res = await $fetch<SaveResult>('/api/schedules/save', {
+        method: 'POST',
+        headers,
+        body: payload
+      })
+
+      return res
+    } catch (err: any) {
+      lastError.value = err?.data?.message || err?.message || 'Save failed'
+      throw err
     }
   }
 
-  /* ================================
-   * DELETE (DRAFT ONLY)
-   * ================================ */
   async function deleteSchedule(scheduleId: string) {
     lastError.value = null
 
-    const { error } = await useFetch('/api/schedules/delete', {
-      method: 'POST',
-      body: { schedule_id: scheduleId }
-    })
+    try {
+      const headers = await authHeaders()
 
-    if (error.value) {
-      lastError.value = error.value.message
-      throw error.value
+      await $fetch('/api/schedules/delete', {
+        method: 'POST',
+        headers,
+        body: { schedule_id: scheduleId }
+      })
+    } catch (err: any) {
+      lastError.value = err?.data?.message || err?.message || 'Delete failed'
+      throw err
     }
   }
 
-  /* ================================
-   * UNDO (ARCHIVED ONLY)
-   * ================================ */
+  async function archiveSchedule(scheduleId: string) {
+    lastError.value = null
+
+    try {
+      const headers = await authHeaders()
+
+      await $fetch('/api/schedules/archive', {
+        method: 'POST',
+        headers,
+        body: { schedule_id: scheduleId }
+      })
+    } catch (err: any) {
+      lastError.value = err?.data?.message || err?.message || 'Archive failed'
+      throw err
+    }
+  }
+
   async function undoSchedule(auditLogId: string) {
     lastError.value = null
 
-    const { error } = await useFetch('/api/schedules/undo', {
-      method: 'POST',
-      body: { audit_log_id: auditLogId }
-    })
+    try {
+      const headers = await authHeaders()
 
-    if (error.value) {
-      lastError.value = error.value.message
-      throw error.value
+      await $fetch('/api/schedules/undo', {
+        method: 'POST',
+        headers,
+        body: { audit_log_id: auditLogId }
+      })
+    } catch (err: any) {
+      lastError.value = err?.data?.message || err?.message || 'Undo failed'
+      throw err
     }
   }
 
-  /* ================================
-   * REALTIME (AUTHORITATIVE)
-   * ================================ */
-  function subscribeRealtime(termId: string) {
-    unsubscribeRealtime()
-
-    realtimeChannel = supabase
-      .channel(`schedules:${termId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'schedules',
-          filter: `academic_term_id=eq.${termId}`
-        },
-        payload => {
-          if (payload.eventType === 'INSERT') {
-            if (!schedules.value.find(s => s.id === payload.new.id)) {
-              schedules.value.push(payload.new)
-            }
-          }
-
-          if (payload.eventType === 'UPDATE') {
-            const index = schedules.value.findIndex(
-              s => s.id === payload.new.id
-            )
-            if (index !== -1) {
-              schedules.value[index] = payload.new
-            }
-          }
-
-          if (payload.eventType === 'DELETE') {
-            schedules.value = schedules.value.filter(
-              s => s.id !== payload.old.id
-            )
-          }
-        }
-      )
-      .subscribe()
-  }
-
-  function unsubscribeRealtime() {
-    if (realtimeChannel) {
-      supabase.removeChannel(realtimeChannel)
-      realtimeChannel = null
-    }
-  }
-
-  /* ================================
-   * RESET
-   * ================================ */
   function reset() {
+    termId.value = null
     schedules.value = []
-    activeTermId.value = null
+    loading.value = false
     lastError.value = null
-    unsubscribeRealtime()
   }
 
-  /* ================================
-   * PUBLIC API
-   * ================================ */
   return {
     // state
+    termId,
     schedules,
-    activeTermId,
-    isLoading,
+    activeSchedules,
+    loading,
     lastError,
 
-    // getters
-    publishedSchedules,
-    schedulesByClass,
-    schedulesByFaculty,
-    schedulesByRoom,
-
     // actions
-    fetchSchedules,
+    fetchList,
     saveSchedule,
-    archiveSchedule,
     deleteSchedule,
+    archiveSchedule,
     undoSchedule,
     reset
   }

@@ -1,316 +1,207 @@
+<!-- app/pages/dean/schedules.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useSupabase } from '@/composables/useSupabase'
-import { useScheduleStore } from '@/stores/useScheduleStore'
+import { useScheduleStore, type ViewMode, type WeekDay } from '@/stores/useScheduleStore'
 
-import ScheduleHeader from '@/components/schedules/ScheduleHeader.vue'
-import ScheduleHistoryDrawer from '@/components/schedules/ScheduleHistoryDrawer.vue'
-import ScheduleNotifications from '@/components/schedules/ScheduleNotifications.vue'
-import TimetableGrid from '@/components/timetable/TimetableGrid.vue'
+import ScheduleHeader from '@/components/schedule/ScheduleHeader.vue'
+import PresenceBar from '@/components/schedule/PresenceBar.vue'
+import ScheduleGrid from '@/components/schedule/ScheduleGrid.vue'
 
+definePageMeta({
+  middleware: 'role',
+  roles: ['DEAN']
+})
 
-type FacultyType = 'FULL_TIME' | 'PART_TIME'
-
-
-/* ================================
- * CLASS FILTER STATE
- * ================================ */
-const filterProgram = ref<string | null>(null)
-const filterYear = ref<number | null>(null)
-const filterAdviser = ref<'WITH' | 'WITHOUT' | null>(null)
-
-const programOptions = computed(() =>
-  [...new Set(classes.value.map(c => c.program))].sort()
-)
-
-const yearOptions = computed(() =>
-  [...new Set(classes.value.map(c => c.year_level))].sort()
-)
-
-
-
-
-/* ================================
- * DEPENDENCIES
- * ================================ */
 const supabase = useSupabase()
-const scheduleStore = useScheduleStore()
+const store = useScheduleStore()
 
-/* ================================
- * VIEW MODE
- * ================================ */
-const viewMode = ref<'CLASS' | 'TEACHER'>('CLASS')
+const viewMode = ref<ViewMode>('CLASS')
 const editMode = ref(false)
 
-/* ================================
- * SELECTION STATE
- * ================================ */
+const academicTermId = ref<string | null>(null)
+const termLocked = ref(false)
+const termSemester = ref<1 | 2 | 3>(1)
+
+const myDeptId = ref<string | null>(null)
+const myDeptType = ref<'REGULAR' | 'GENED' | 'PE_NSTP'>('REGULAR')
+
 const selectedClassId = ref<string | null>(null)
 const selectedTeacherId = ref<string | null>(null)
 
-/* ================================
- * DATA SOURCES
- * ================================ */
-const classes = ref<any[]>([])
+const periods = ref<any[]>([])
+const rooms = ref<any[]>([])
 const faculty = ref<any[]>([])
-const periods = ref<{ id: string; label: string }[]>([])
+const subjects = ref<any[]>([])
+const classes = ref<any[]>([])
 
-/* ================================
- * CONTEXT STATE
- * ================================ */
-const academicTermId = ref<string | null>(null)
-const departmentId = ref<string | null>(null)
-const departmentType = ref<'REGULAR' | 'GENED' | 'PE_NSTP'>('REGULAR')
-const termLocked = ref(false)
+const days: WeekDay[] = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
 
-/* ================================
- * UI STATE
- * ================================ */
-const showHistory = ref(false)
-const showNotifications = ref(false)
+const safeTermId = computed(() => academicTermId.value ?? '')
+const safeDeptId = computed(() => myDeptId.value ?? '')
 
-/* ================================
- * LOAD BOOTSTRAP DATA
- * ================================ */
+const canRender = computed(() => {
+  if (!academicTermId.value || !myDeptId.value) return false
+  return viewMode.value === 'CLASS'
+    ? Boolean(selectedClassId.value)
+    : Boolean(selectedTeacherId.value)
+})
+
+const canEdit = computed(() => !termLocked.value && canRender.value)
+
+const selectionForPresence = computed(() => ({
+  viewMode: viewMode.value,
+  classId: selectedClassId.value,
+  teacherId: selectedTeacherId.value,
+  editing: editMode.value
+}))
+
+watch(viewMode, () => {
+  selectedClassId.value = null
+  selectedTeacherId.value = null
+  editMode.value = false
+})
+
 onMounted(async () => {
-  /* 1️⃣ ACTIVE ACADEMIC TERM */
   const { data: term } = await supabase
     .from('academic_terms')
-    .select('id, is_locked')
+    .select('id, is_locked, semester')
     .eq('is_active', true)
     .single()
 
   if (!term) return
 
-  const termId = term.id
-  academicTermId.value = termId
+  academicTermId.value = term.id
   termLocked.value = term.is_locked
+  termSemester.value = term.semester as 1 | 2 | 3
 
-  /* 2️⃣ CURRENT USER */
   const { data: auth } = await supabase.auth.getUser()
   if (!auth?.user) return
 
-  /* 3️⃣ USER DEPARTMENT */
-  const { data: profile } = await supabase
+  const { data: me } = await supabase
     .from('users')
-    .select('department_id')
+    .select('department_id, role, is_active')
     .eq('id', auth.user.id)
     .single()
 
-  if (!profile?.department_id) return
+  if (!me?.department_id) return
 
-  const deptId = profile.department_id
-  departmentId.value = deptId
+  const deptId = me.department_id as string
+  myDeptId.value = deptId
 
-  /* 4️⃣ DEPARTMENT TYPE */
   const { data: dept } = await supabase
     .from('departments')
     .select('department_type')
     .eq('id', deptId)
     .single()
 
-  departmentType.value = dept?.department_type ?? 'REGULAR'
+  myDeptType.value = dept?.department_type ?? 'REGULAR'
 
-  /* 5️⃣ LOAD REFERENCE DATA */
-  const [c, f, p] = await Promise.all([
-   supabase
-  .from('classes')
-  .select(`
-    *,
-    adviser:faculty (
-      first_name,
-      last_name
-    )
-  `)
-  .eq('department_id', deptId)
-  .order('year_level'),
+  const p = await supabase
+    .from('periods')
+    .select('*')
+    .order('slot_index')
 
-    supabase
-      .from('faculty')
-      .select('*')
-      .eq('department_id', deptId)
-      .eq('is_active', true)
-      .order('last_name'),
+  const r = await supabase
+    .from('rooms')
+    .select('*')
+    .eq('is_active', true)
+    .order('name')
 
-    supabase
-      .from('periods')
-      .select('*')
-      .order('slot_index')
-  ])
+  const f = await supabase
+    .from('faculty')
+    .select('*')
+    .eq('department_id', deptId)
+    .eq('is_active', true)
+    .order('last_name')
 
-  classes.value = c.data ?? []
+  const subjectType =
+    myDeptType.value === 'REGULAR'
+      ? 'MAJOR'
+      : myDeptType.value === 'GENED'
+        ? 'GENED'
+        : 'PE_NSTP'
+
+  const s = await supabase
+    .from('subjects')
+    .select('*')
+    .eq('subject_type', subjectType)
+    .eq('semester', termSemester.value)
+    .eq('is_locked', false)
+    .order('course_code')
+
+  const c = myDeptType.value === 'REGULAR'
+    ? await supabase
+        .from('classes')
+        .select('*')
+        .eq('department_id', deptId)
+        .order('year_level')
+        .order('section')
+    : await supabase
+        .from('classes')
+        .select('*')
+        .order('year_level')
+        .order('section')
+
+  periods.value = p.data ?? []
+  rooms.value = r.data ?? []
   faculty.value = f.data ?? []
-  periods.value =
-    (p.data ?? []).map(pr => ({
-      id: pr.id,
-      label: `${pr.start_time} - ${pr.end_time}`
-    }))
+  subjects.value = s.data ?? []
+  classes.value = c.data ?? []
 
-  /* 6️⃣ FETCH SCHEDULES + REALTIME */
-  await scheduleStore.fetchSchedules(termId)
-})
-
-/* ================================
- * RESET SELECTION ON TOGGLE
- * ================================ */
-watch(viewMode, () => {
-  selectedClassId.value = null
-  selectedTeacherId.value = null
-})
-
-watch(
-  [viewMode, selectedClassId, selectedTeacherId],
-  () => {
-    if (editMode.value && !canEdit.value) {
-      editMode.value = false
-    }
-  }
-)
-
-
-/* ================================
- * COMPUTED GUARDS
- * ================================ */
-const canRenderGrid = computed(() => {
-  if (!academicTermId.value || !departmentId.value) return false
-  return viewMode.value === 'CLASS'
-    ? Boolean(selectedClassId.value)
-    : Boolean(selectedTeacherId.value)
-})
-
-const pageTitle = computed(() =>
-  viewMode.value === 'CLASS' ? 'Class Schedule' : 'Teacher Schedule'
-)
-
-const canEdit = computed(() => {
-  if (termLocked.value) return false
-
-  return viewMode.value === 'CLASS'
-    ? Boolean(selectedClassId.value)
-    : Boolean(selectedTeacherId.value)
+  await store.fetchList(term.id)
 })
 
 const classOptions = computed(() =>
-  classes.value
-    .filter(c => {
-if (filterProgram.value && c.program !== filterProgram.value) return false
-if (filterYear.value && c.year_level !== filterYear.value) return false
-
-if (filterAdviser.value === 'WITH' && !c.adviser) return false
-if (filterAdviser.value === 'WITHOUT' && c.adviser) return false
-
-      return true
-    })
-    .map(c => ({
-      id: c.id,
-      yearLabel: ordinal(c.year_level),
-      label: `${c.program} ${ordinal(c.year_level)} Year - ${c.section}`,
-      adviser: c.adviser
-        ? `${c.adviser.last_name}, ${c.adviser.first_name}`
-        : 'No Assigned Adviser'
-    }))
-)
-
-
-function ordinal(n: number) {
-  return ['1st','2nd','3rd'][n-1] ?? `${n}th`
-}
-
-/* ================================
- * CLASS SEARCH FILTER (PATCH C)
- * ================================ */
-const classFilter = (value: string, query: string) =>
-  value.toLowerCase().includes(query.toLowerCase())
-
-const teacherOptions = computed<{
-  id: string
-  label: string
-  type: FacultyType
-}[]>(() =>
-  faculty.value.map(f => ({
-    id: f.id,
-    label: `${f.last_name}, ${f.first_name}${f.middle_name ? ' ' + f.middle_name : ''}`,
-    type: f.faculty_type === 'FULL_TIME'
-      ? 'FULL_TIME'
-      : 'PART_TIME'
+  classes.value.map((c: any) => ({
+    title: `${c.program} ${c.year_level} - ${c.section}`,
+    value: c.id,
+    department_id: c.department_id,
+    year_level: c.year_level
   }))
 )
 
-function facultyTypeMeta(type: FacultyType | string) {
-  const safeType: FacultyType =
-    type === 'FULL_TIME' ? 'FULL_TIME' : 'PART_TIME'
-
-  return safeType === 'FULL_TIME'
-    ? {
-        label: 'Full Time',
-        color: 'success',
-        icon: 'mdi-briefcase-check'
-      }
-    : {
-        label: 'Part Time',
-        color: 'info',
-        icon: 'mdi-briefcase-clock'
-      }
-}
-
-
-
-/* ================================
- * TEACHER FILTER STATE
- * ================================ */
-const filterFacultyType = ref<FacultyType | null>(null)
-
-const filteredTeacherOptions = computed(() =>
-  teacherOptions.value.filter(t => {
-    if (!filterFacultyType.value) return true
-    return t.type === filterFacultyType.value
-  })
+const teacherOptions = computed(() =>
+  faculty.value.map((f: any) => ({
+    title: `${f.last_name}, ${f.first_name}${f.middle_name ? ' ' + f.middle_name : ''}`,
+    value: f.id
+  }))
 )
 
-
-
-const pageSubtitle = computed(() => departmentType.value)
+const selectedClassMeta = computed(() =>
+  classOptions.value.find(x => x.value === selectedClassId.value)
+)
 </script>
 
 <template>
-  <div class="schedule-page">
-    <!-- ================= HEADER ================= -->
+  <div>
     <ScheduleHeader
-      :title="pageTitle"
-      :subtitle="pageSubtitle"
+      title="Schedules"
       :termLocked="termLocked"
-      @open-history="showHistory = true"
-      @open-notifications="showNotifications = true"
+      :subtitle="`${myDeptType} • ${viewMode}`"
     />
 
-    <!-- ================= CONTROLS ================= -->
-    <div class="controls">
-      <VBtnToggle
-        v-model="viewMode"
-        mandatory
-        :disabled="editMode"
-      >
+    <div class="topbar">
+      <VBtnToggle v-model="viewMode" mandatory :disabled="editMode">
         <VBtn value="CLASS">Class View</VBtn>
         <VBtn value="TEACHER">Teacher View</VBtn>
       </VBtnToggle>
 
-
       <div class="right">
-     <VBtn
-        v-if="!editMode"
-        color="primary"
-        variant="outlined"
-        :disabled="!canEdit"
-        @click="editMode = true"
-      >
-        Edit Schedule
-      </VBtn>
-
+        <VBtn
+          v-if="!editMode"
+          variant="outlined"
+          color="primary"
+          :disabled="!canEdit"
+          @click="editMode = true"
+        >
+          Edit
+        </VBtn>
 
         <VBtn
           v-else
-          color="primary"
           variant="outlined"
+          color="primary"
           @click="editMode = false"
         >
           Exit Edit
@@ -318,336 +209,170 @@ const pageSubtitle = computed(() => departmentType.value)
       </div>
     </div>
 
-    <!-- ================= SELECTORS ================= -->
-    <div class="selectors">
+    <div class="main">
+      <div class="top-row">
+        <PresenceBar
+          v-if="academicTermId"
+          class="presence-card"
+          :termId="safeTermId"
+          :selection="selectionForPresence"
+        />
 
-      <!-- ================= CLASS TOOLBAR ================= -->
-<div v-if="viewMode === 'CLASS'" class="class-toolbar">
+        <div class="selector-card">
+          <div class="selector-head">
+            <div class="selector-title">
+              {{ viewMode === 'CLASS' ? 'Select Class' : 'Select Faculty' }}
+            </div>
+            <div class="selector-hint">
+              {{ viewMode === 'CLASS'
+                ? 'Choose a class to view & edit the schedule'
+                : 'Choose a faculty to view & edit the schedule'
+              }}
+            </div>
+          </div>
 
-  <!-- PRIMARY: CLASS SEARCH -->
-  <div class="class-primary-block">
-    <div class="primary-label">Select Class</div>
+          <VAutocomplete
+            v-if="viewMode === 'CLASS'"
+            v-model="selectedClassId"
+            :items="classOptions"
+            item-title="title"
+            item-value="value"
+            placeholder="Search program / year / section"
+            prepend-inner-icon="mdi-school"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hide-details
+            :disabled="editMode"
+            :menu-props="{ maxHeight: 420 }"
+            class="selector-input"
+          >
+            <template #item="{ item, props }">
+              <VListItem v-bind="props" :title="undefined" :subtitle="undefined">
+                <VListItemTitle class="d-flex align-center gap-2">
+                  <VIcon size="16">mdi-account-group</VIcon>
+                  {{ item.raw.title }}
+                </VListItemTitle>
 
-    <VAutocomplete
-      v-model="selectedClassId"
-      :items="classOptions"
-      item-title="label"
-      item-value="id"
-      placeholder="Search class (Program, Year, Section)"
-      clearable
-      auto-select-first
-      variant="solo-filled"
-      density="comfortable"
-      prepend-inner-icon="mdi-magnify"
-      :menu-props="{ maxHeight: 360 }"
-      :disabled="editMode"
-      class="class-primary"
-    >
-      <template #item="{ item, props }">
-        <VListItem v-bind="props" :title="undefined" :subtitle="undefined">
-          <VListItemTitle class="d-flex align-center gap-2">
-            <VChip size="x-small" color="secondary" variant="outlined">
-              {{ item.raw.yearLabel }}
-            </VChip>
-            {{ item.raw.label }}
-          </VListItemTitle>
-          <VListItemSubtitle>
-            Adviser: {{ item.raw.adviser }}
-          </VListItemSubtitle>
-        </VListItem>
-      </template>
-    </VAutocomplete>
-  </div>
+              </VListItem>
+            </template>
+          </VAutocomplete>
 
-  <!-- CLASS FILTERS -->
-  <div class="class-filters-block">
-    <div class="filters-label">Filters</div>
+          <VAutocomplete
+            v-else
+            v-model="selectedTeacherId"
+            :items="teacherOptions"
+            item-title="title"
+            item-value="value"
+            placeholder="Search last name / first name"
+            prepend-inner-icon="mdi-account-search"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hide-details
+            :disabled="editMode"
+            :menu-props="{ maxHeight: 420 }"
+            class="selector-input"
+          />
+        </div>
+      </div>
 
-    <div class="class-filters">
-      <VSelect v-model="filterProgram" :items="programOptions" label="Program"
-        clearable density="compact" variant="outlined" :disabled="editMode" />
+      <VAlert v-if="!canRender" type="info" variant="tonal" class="mt-4">
+        Select a {{ viewMode === 'CLASS' ? 'class' : 'faculty' }} to view schedule.
+      </VAlert>
 
-      <VSelect v-model="filterYear" :items="yearOptions" label="Year"
-        clearable density="compact" variant="outlined" :disabled="editMode" />
+      <VAlert v-if="editMode" type="warning" variant="tonal" density="compact" class="mt-2">
+        Editing mode active — exit edit to change view/selection.
+      </VAlert>
 
-      <VSelect v-model="filterAdviser"
-        :items="[
-          { title: 'With Adviser', value: 'WITH' },
-          { title: 'Without Adviser', value: 'WITHOUT' }
-        ]"
-        item-title="title"
-        item-value="value"
-        label="Adviser"
-        clearable
-        density="compact"
-        variant="outlined"
-        :disabled="editMode"
+      <ScheduleGrid
+        v-if="canRender && academicTermId && myDeptId"
+        class="mt-4"
+        :days="days"
+        :periods="periods"
+        :schedules="store.activeSchedules"
+        :classes="classes"
+        :termId="safeTermId"
+        :termLocked="termLocked"
+        :termSemester="termSemester"
+        :editMode="editMode"
+        :viewMode="viewMode"
+        :selectedClassId="selectedClassId"
+        :selectedTeacherId="selectedTeacherId"
+        :selectedClassMeta="selectedClassMeta"
+        :myDeptId="safeDeptId"
+        :myDeptType="myDeptType"
+        :subjects="subjects"
+        :faculty="faculty"
+        :rooms="rooms"
       />
     </div>
   </div>
-
-</div>
-
-
-<!-- ================= TEACHER TOOLBAR ================= -->
-<div v-if="viewMode === 'TEACHER'" class="class-toolbar">
-
-  <!-- PRIMARY: TEACHER SEARCH -->
-  <div class="class-primary-block">
-    <div class="primary-label">Select Teacher</div>
-
-    <VAutocomplete
-      v-model="selectedTeacherId"
-      :items="filteredTeacherOptions"
-      item-title="label"
-      item-value="id"
-      placeholder="Search teacher (Last, First, Middle)"
-      clearable
-      auto-select-first
-      variant="solo-filled"
-      density="comfortable"
-      prepend-inner-icon="mdi-account-search"
-      :menu-props="{ maxHeight: 360 }"
-      :disabled="editMode"
-      class="class-primary"
-    >
-      <!-- DROPDOWN ITEM -->
-      <template #item="{ item, props }">
-        <VListItem v-bind="props" :title="undefined" :subtitle="undefined">
-          <VListItemTitle class="d-flex align-center gap-2">
-            <VIcon size="16">mdi-account</VIcon>
-            {{ item.raw.label }}
-          </VListItemTitle>
-
-          <VListItemSubtitle class="d-flex align-center gap-2">
-            <VIcon
-              size="14"
-              :color="facultyTypeMeta(item.raw.type).color"
-            >
-              {{ facultyTypeMeta(item.raw.type).icon }}
-            </VIcon>
-
-            <VChip
-              size="x-small"
-              :color="facultyTypeMeta(item.raw.type).color"
-              variant="tonal"
-            >
-              {{ facultyTypeMeta(item.raw.type).label }}
-            </VChip>
-          </VListItemSubtitle>
-        </VListItem>
-      </template>
-
-      <!-- SELECTED VALUE -->
-      <template #selection="{ item }">
-        <div class="d-flex align-center gap-2">
-          <span>{{ item.raw.label }}</span>
-          <VChip
-            size="x-small"
-            :color="facultyTypeMeta(item.raw.type).color"
-            variant="tonal"
-          >
-            {{ facultyTypeMeta(item.raw.type).label }}
-          </VChip>
-        </div>
-      </template>
-    </VAutocomplete>
-  </div>
-
-  <!-- TEACHER FILTER -->
-  <div class="class-filters-block">
-    <div class="filters-label">Filters</div>
-
-    <div class="class-filters">
-      <VSelect
-        v-model="filterFacultyType"
-        :items="[
-          { title: 'Full Time', value: 'FULL_TIME' },
-          { title: 'Part Time', value: 'PART_TIME' }
-        ]"
-        item-title="title"
-        item-value="value"
-        label="Faculty Type"
-        clearable
-        density="compact"
-        variant="outlined"
-        hide-details
-        :disabled="editMode"
-      >
-  
-
-        <!-- SELECTED VALUE -->
-        <template #selection="{ item }">
-          <VChip
-            size="x-small"
-            :color="facultyTypeMeta(item.value).color"
-            variant="tonal"
-          >
-            {{ item.title }}
-          </VChip>
-        </template>
-      </VSelect>
-    </div>
-  </div>
-
-</div>
-
-
-    </div>
-
-    <!-- ================= INFO ================= -->
-    <VAlert
-      v-if="!canRenderGrid"
-      type="info"
-      variant="tonal"
-      class="mt-4"
-    >
-      Select a {{ viewMode === 'CLASS' ? 'class' : 'teacher' }} to view schedule
-    </VAlert>
-
-    <VAlert
-  v-if="editMode"
-  type="warning"
-  variant="tonal"
-  density="compact"
-  class="mx-4 mt-2"
->
-  Editing mode active — finish or exit edit to change view or selection.
-</VAlert>
-
-
-    <!-- ================= GRID ================= -->
-    <TimetableGrid
-      v-if="canRenderGrid"
-      class="mt-4"
-      :academicTermId="academicTermId as string"
-      :departmentId="departmentId as string"
-      :departmentType="departmentType"
-      :mode="viewMode"
-      :classId="viewMode === 'CLASS' ? selectedClassId ?? undefined : undefined"
-      :teacherId="viewMode === 'TEACHER' ? selectedTeacherId ?? undefined : undefined"
-      :editMode="editMode"
-      :periods="periods"
-      :termLocked="termLocked" 
-    />
-
-    <!-- ================= DRAWERS ================= -->
-    <ScheduleHistoryDrawer
-      :open="showHistory"
-      @close="showHistory = false"
-    />
-
-    <VNavigationDrawer
-      location="right"
-      width="420"
-      v-model="showNotifications"
-    >
-      <ScheduleNotifications />
-    </VNavigationDrawer>
-  </div>
-
 </template>
 
 <style scoped>
-.schedule-page {
-  padding: 0;
-}
-
-/* ===== TOP CONTROLS ===== */
-.controls {
+.topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 18px;
+  padding: 12px 16px;
   background: #fff;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-/* ===== SELECTOR AREA ===== */
-.selectors {
-  padding: 10px 10px;
+.main {
+  padding: 12px;
+  background: transparent;
 }
 
-/* MAIN ROW:
-   [ Select Class ]  [ Program | Year | Adviser ] */
-.class-toolbar {
+.top-row {
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) 420px;
-  gap: 20px;
+  grid-template-columns: 280px 1fr;
+  gap: 12px;
   align-items: start;
 }
 
-/* PRIMARY CLASS SELECT */
-.class-primary {
-  max-width: 520px;
+.presence-card {
+  height: fit-content;
 }
 
-/* FILTERS */
-.class-filters {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(140px, 1fr));
-  gap: 10px;
+.selector-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 16px;
 }
 
-
-/* PRIMARY BLOCK */
-.class-primary-block {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.selector-head {
+  margin-bottom: 10px;
 }
 
-/* PRIMARY LABEL */
-.primary-label {
+.selector-title {
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.selector-hint {
   font-size: 12px;
-  font-weight: 600;
-  color: #6b7280;
-  letter-spacing: 0.04em;
+  color: #64748b;
+  margin-top: 2px;
 }
 
-
-
-/* FILTER BLOCK */
-.class-filters-block {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.selector-input :deep(.v-field) {
+  border-radius: 12px;
 }
 
-/* FILTER LABEL */
-.filters-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #6b7280; /* neutral gray */
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.selector-input :deep(input) {
+  font-size: 14px;
 }
 
-/* FILTER INPUTS */
-.class-filters {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(140px, 1fr));
-  gap: 10px;
+.gap-2 {
+  gap: 8px;
 }
 
-
-/* ===== RESPONSIVE ===== */
 @media (max-width: 900px) {
-  .class-toolbar {
-    grid-template-columns: 1fr;
-  }
-
-  .class-filters {
+  .top-row {
     grid-template-columns: 1fr;
   }
 }
-
-@media (max-width: 768px) {
-  .controls {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-}
-
 </style>
