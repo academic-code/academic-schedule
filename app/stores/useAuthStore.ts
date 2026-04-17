@@ -20,7 +20,6 @@ export const useAuthStore = defineStore('auth', {
       const supabase = useSupabase()
       this.loading = true
 
-      // 1️⃣ Get session
       const { data } = await supabase.auth.getSession()
       const session = data.session
 
@@ -30,7 +29,6 @@ export const useAuthStore = defineStore('auth', {
         return
       }
 
-      // 2️⃣ Load profile
       const { data: profile, error } = await supabase
         .from('users')
         .select(`
@@ -51,33 +49,6 @@ export const useAuthStore = defineStore('auth', {
         return
       }
 
-      // ==================================================
-      // ✅ AUTO-ACTIVATE + FIRST LOGIN AUDIT (HERE)
-      // ==================================================
-   if (!profile.last_login_at) {
-  await supabase
-    .from('users')
-    .update({
-      last_login_at: new Date().toISOString(),
-      is_active: true
-    })
-    .eq('id', profile.id)
-
-  await supabase.from('audit_logs').insert({
-    user_id: profile.id,
-    action: 'LOGIN',
-    entity_type: 'USER',
-    entity_id: profile.id,
-    new_value: { first_login: true }
-  })
-
-  // 🔑 IMPORTANT: update local copy
-  profile.last_login_at = new Date().toISOString()
-  profile.is_active = true
-}
-
-
-      // 3️⃣ Save to store
       this.user = {
         id: profile.id,
         email: profile.email,
@@ -86,35 +57,65 @@ export const useAuthStore = defineStore('auth', {
         isActive: profile.is_active
       }
 
+      if (!profile.is_active) {
+        this.loading = false
+        return
+      }
+
+      if (!profile.last_login_at) {
+        const now = new Date().toISOString()
+
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            last_login_at: now
+          })
+          .eq('id', profile.id)
+
+        if (!updateError) {
+          await supabase.from('audit_logs').insert({
+            user_id: profile.id,
+            action: 'UPDATE',
+            entity_type: 'USER',
+            entity_id: profile.id,
+            old_value: { last_login_at: null },
+            new_value: {
+              first_login: true,
+              last_login_at: now
+            }
+          })
+
+          this.user = {
+            ...this.user,
+            isActive: profile.is_active
+          }
+        }
+      }
+
       this.loading = false
     },
 
-async signIn(email: string, password: string) {
-  const supabase = useSupabase()
+    async signIn(email: string, password: string) {
+      const supabase = useSupabase()
 
-  // 1️⃣ Auth with Supabase
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  })
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      })
 
-  if (error) throw error
+      if (error) throw error
 
-  // 2️⃣ Load profile + auto-activate logic
-  await this.init()
+      await this.init()
 
-  // 3️⃣ 🔒 BLOCK INACTIVE USERS (THIS IS THE CODE YOU ASKED ABOUT)
-  if (this.user && !this.user.isActive) {
-    await supabase.auth.signOut()
-    throw new Error('Account is deactivated. Please contact administrator.')
-  }
+      if (this.user && !this.user.isActive) {
+        await supabase.auth.signOut()
+        throw new Error('Account is deactivated. Please contact administrator.')
+      }
 
-  // 4️⃣ Role-based redirect (unchanged)
-  if (this.user?.role === 'ADMIN') return navigateTo('/admin/dashboard')
-  if (this.user?.role === 'DEAN') return navigateTo('/dean/dashboard')
-  if (this.user?.role === 'FACULTY') return navigateTo('/faculty/schedule')
-},
-
+      if (this.user?.role === 'ADMIN') return navigateTo('/admin/dashboard')
+      if (this.user?.role === 'DEAN') return navigateTo('/dean/dashboard')
+      if (this.user?.role === 'FACULTY') return navigateTo('/faculty/schedule')
+    },
 
     async signOut() {
       const supabase = useSupabase()

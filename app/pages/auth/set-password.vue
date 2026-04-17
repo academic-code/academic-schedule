@@ -5,7 +5,8 @@ import { useSupabase } from '@/composables/useSupabase'
 import { useNotifyStore } from '@/stores/useNotifyStore'
 
 definePageMeta({
-  layout: 'auth'
+  layout: 'auth',
+  public: true
 })
 
 const supabase = useSupabase()
@@ -17,10 +18,6 @@ const confirmPassword = ref('')
 const loading = ref(false)
 const validSession = ref(false)
 
-/**
- * Ensure this page is opened from
- * a valid Supabase invite / reset link
- */
 onMounted(async () => {
   const { data } = await supabase.auth.getSession()
 
@@ -59,7 +56,6 @@ const setPassword = async () => {
 
   notify.success('Password set successfully. Please log in.')
 
-  // IMPORTANT: clear session so login is required
   await supabase.auth.signOut()
   router.replace('/login')
 }

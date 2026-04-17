@@ -1,19 +1,24 @@
 import { useAuthStore } from '@/stores/useAuthStore'
 
-export default defineNuxtRouteMiddleware((to) => {
+export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuthStore()
 
-  if (auth.loading) return
+  // ✅ allow explicitly public pages
+  if (to.meta.public) return
 
-  // Public routes
-  if (to.path === '/login') return
+  // ✅ fallback public routes
+  if (to.path === '/login' || to.path === '/auth/set-password') return
+
+  // ✅ wait for auth to finish initializing
+  if (auth.loading) {
+    await auth.init()
+  }
 
   if (!auth.user) {
     return navigateTo('/login')
   }
 
-  if (auth.user && !auth.user.isActive) {
-  return navigateTo('/login')
-}
-
+  if (!auth.user.isActive) {
+    return navigateTo('/login')
+  }
 })
