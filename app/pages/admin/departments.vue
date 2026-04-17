@@ -15,6 +15,7 @@ const notify = useNotifyStore()
 
 const departments = ref<any[]>([])
 const loading = ref(false)
+const deleting = ref(false)
 const search = ref('')
 
 // dialog
@@ -29,26 +30,42 @@ const deletingRow = ref<any | null>(null)
 // ================= FETCH =================
 const fetchDepartments = async () => {
   loading.value = true
-  const { data, error } = await supabase
-    .from('departments')
-    .select('*')
-    .order('name')
 
-  if (error) {
-    notify.error('Failed to load departments')
-  } else {
+  try {
+    const { data, error } = await supabase
+      .from('departments')
+      .select('*')
+      .order('name')
+
+    if (error) throw error
+
     departments.value = data ?? []
+  } catch (err: any) {
+    notify.error(err?.message || 'Failed to load departments')
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 
 // ================= SEARCH =================
 const filteredDepartments = computed(() => {
   if (!search.value) return departments.value
-  return departments.value.filter(d =>
+
+  return departments.value.filter((d) =>
     d.name.toLowerCase().includes(search.value.toLowerCase())
   )
 })
+
+// ================= DIALOG =================
+const openCreateDialog = () => {
+  selectedDepartment.value = null
+  dialogOpen.value = true
+}
+
+const openEditDialog = (row: any) => {
+  selectedDepartment.value = row
+  dialogOpen.value = true
+}
 
 // ================= DELETE =================
 const requestDelete = (row: any) => {
@@ -57,14 +74,24 @@ const requestDelete = (row: any) => {
   confirmDelete.value = true
 }
 
+const closeDeleteDialog = () => {
+  confirmDelete.value = false
+  forceDelete.value = false
+  deletingRow.value = null
+}
+
 const executeDelete = async () => {
-  if (!deletingRow.value) return
+  if (!deletingRow.value || deleting.value) return
+
+  deleting.value = true
 
   try {
-    await supabase.rpc('delete_department_cascade', {
+    const { error } = await supabase.rpc('delete_department_cascade', {
       p_department_id: deletingRow.value.id,
       p_force: forceDelete.value
     })
+
+    if (error) throw error
 
     notify.success(
       forceDelete.value
@@ -80,17 +107,20 @@ const executeDelete = async () => {
       new_value: null
     })
 
-    confirmDelete.value = false
-    deletingRow.value = null
+    closeDeleteDialog()
 
-    // safety refresh (realtime already does this)
+    // safety refresh
     await fetchDepartments()
   } catch (err: any) {
+    const message = err?.message || 'Delete failed'
+
     notify.error(
-      err.message?.includes('connected data')
+      message.includes('connected data')
         ? 'Department has connected data. Use force delete.'
-        : err.message || 'Delete failed'
+        : message
     )
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -129,10 +159,7 @@ onBeforeUnmount(() => {
         </p>
       </div>
 
-      <v-btn
-        color="primary"
-        @click="() => { selectedDepartment = null; dialogOpen = true }"
-      >
+      <v-btn color="primary" @click="openCreateDialog">
         Add Department
       </v-btn>
     </div>
@@ -168,7 +195,6 @@ onBeforeUnmount(() => {
           <tr>
             <td>{{ item.name }}</td>
 
-            <!-- COLOR CODED TYPE -->
             <td>
               <v-chip
                 size="small"
@@ -191,14 +217,13 @@ onBeforeUnmount(() => {
               </v-chip>
             </td>
 
-            <!-- ONE-LINE ACTIONS -->
             <td class="text-center">
-              <div class="d-flex align-center justify-center gap-2">
+              <div class="d-flex align-center justify-center ga-2">
                 <v-btn
                   icon
                   size="small"
                   variant="text"
-                  @click="() => { selectedDepartment = item; dialogOpen = true }"
+                  @click="openEditDialog(item)"
                 >
                   <v-icon size="18">mdi-pencil</v-icon>
                 </v-btn>
@@ -243,11 +268,17 @@ onBeforeUnmount(() => {
         />
 
         <div class="d-flex justify-end mt-4">
-          <v-btn variant="text" @click="confirmDelete = false">
+          <v-btn variant="text" :disabled="deleting" @click="closeDeleteDialog">
             Cancel
           </v-btn>
 
-          <v-btn color="error" class="ml-2" @click="executeDelete">
+          <v-btn
+            color="error"
+            class="ml-2"
+            :loading="deleting"
+            :disabled="deleting"
+            @click="executeDelete"
+          >
             Delete
           </v-btn>
         </div>

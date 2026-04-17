@@ -17,18 +17,24 @@ const notify = useNotifyStore()
 
 const saving = ref(false)
 
-const form = ref({
+const defaultForm = () => ({
   name: '',
   department_type: 'REGULAR'
 })
 
-// ================= WATCH =================
+const form = ref(defaultForm())
+
 watch(
-  () => props.department,
-  (val) => {
-    form.value = val
-      ? { name: val.name, department_type: val.department_type }
-      : { name: '', department_type: 'REGULAR' }
+  () => [props.modelValue, props.department],
+  ([open]) => {
+    if (!open) return
+
+    form.value = props.department
+      ? {
+          name: props.department.name,
+          department_type: props.department.department_type
+        }
+      : defaultForm()
   },
   { immediate: true }
 )
@@ -42,33 +48,35 @@ const validate = () => {
     return false
   }
 
-  // ❌ Duplicate name
   if (
-    props.existingDepartments.some(d =>
-      d.name.toLowerCase() === name &&
-      d.id !== props.department?.id
+    props.existingDepartments.some(
+      (d) =>
+        d.name.toLowerCase() === name &&
+        d.id !== props.department?.id
     )
   ) {
     notify.warning('Department name already exists')
     return false
   }
 
-  // ❌ Only one GENED
   if (
     form.value.department_type === 'GENED' &&
     props.existingDepartments.some(
-      d => d.department_type === 'GENED' && d.id !== props.department?.id
+      (d) =>
+        d.department_type === 'GENED' &&
+        d.id !== props.department?.id
     )
   ) {
     notify.warning('Only one General Education department is allowed')
     return false
   }
 
-  // ❌ Only one PE_NSTP
   if (
     form.value.department_type === 'PE_NSTP' &&
     props.existingDepartments.some(
-      d => d.department_type === 'PE_NSTP' && d.id !== props.department?.id
+      (d) =>
+        d.department_type === 'PE_NSTP' &&
+        d.id !== props.department?.id
     )
   ) {
     notify.warning('Only one PE & NSTP department is allowed')
@@ -79,8 +87,13 @@ const validate = () => {
 }
 
 // ================= SAVE =================
+const closeDialog = () => {
+  emit('update:modelValue', false)
+}
+
 const save = async () => {
   if (!validate()) return
+
   saving.value = true
 
   try {
@@ -97,7 +110,7 @@ const save = async () => {
       await logAudit({
         action: 'UPDATE',
         entity_type: 'DEPARTMENT',
-        entity_id: props.department.id,
+        entity_id: props.department.id
       })
     } else {
       const { data, error } = await supabase
@@ -106,21 +119,21 @@ const save = async () => {
         .select('id')
         .single()
 
-      if (error || !data) throw error
+      if (error || !data) throw error || new Error('Failed to create department')
 
       notify.success('Department created')
 
       await logAudit({
         action: 'CREATE',
         entity_type: 'DEPARTMENT',
-        entity_id: data.id,
+        entity_id: data.id
       })
     }
 
     emit('saved')
-    emit('update:modelValue', false)
+    closeDialog()
   } catch (err: any) {
-    notify.error(err.message || 'Save failed')
+    notify.error(err?.message || 'Save failed')
   } finally {
     saving.value = false
   }
@@ -139,16 +152,16 @@ const save = async () => {
       </h3>
 
       <v-text-field
-        label="Department Name"
         v-model="form.name"
+        label="Department Name"
         variant="outlined"
         required
         class="mb-4"
       />
 
       <v-select
-        label="Department Type"
         v-model="form.department_type"
+        label="Department Type"
         variant="outlined"
         :items="[
           { title: 'Regular', value: 'REGULAR' },
@@ -158,7 +171,7 @@ const save = async () => {
       />
 
       <div class="d-flex justify-end mt-6">
-        <v-btn variant="text" @click="emit('update:modelValue', false)">
+        <v-btn variant="text" :disabled="saving" @click="closeDialog">
           Cancel
         </v-btn>
 
