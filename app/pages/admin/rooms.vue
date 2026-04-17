@@ -11,87 +11,109 @@ definePageMeta({
   roles: ['ADMIN']
 })
 
+type RoomRow = {
+  id: string
+  name: string
+  room_type: 'LECTURE' | 'LAB' | 'ONLINE'
+  capacity: number | null
+  is_active: boolean
+  created_at: string
+}
+
 const supabase = useSupabase()
 const notify = useNotifyStore()
 
-// ================= STATE =================
-const rooms = ref<any[]>([])
+const rooms = ref<RoomRow[]>([])
 const loading = ref(false)
+const actionLoading = ref(false)
 const search = ref('')
 
-// dialogs
 const createDialogOpen = ref(false)
 const editDialogOpen = ref(false)
 const confirmDelete = ref(false)
 const viewSchedulesOpen = ref(false)
 
-// selection
-const editingRow = ref<any | null>(null)
-const deletingRow = ref<any | null>(null)
+const editingRow = ref<RoomRow | null>(null)
+const deletingRow = ref<RoomRow | null>(null)
 const viewingRoomId = ref<string | null>(null)
 
-// ================= FETCH =================
 const fetchRooms = async () => {
   loading.value = true
 
-  const { data, error } = await supabase
-    .from('rooms')
-    .select('*')
-    .order('created_at', { ascending: false })
+  try {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-  if (error) {
-    notify.error(error.message || 'Failed to load rooms')
-  } else {
-    rooms.value = data ?? []
+    if (error) throw error
+
+    rooms.value = (data ?? []) as RoomRow[]
+  } catch (err: any) {
+    notify.error(err?.message || 'Failed to load rooms')
+  } finally {
+    loading.value = false
   }
-
-  loading.value = false
 }
 
-// ================= SEARCH =================
 const filteredRooms = computed(() => {
-  if (!search.value) return rooms.value
-  const q = search.value.toLowerCase()
+  const q = search.value.trim().toLowerCase()
+  if (!q) return rooms.value
 
-  return rooms.value.filter((r) =>
-    r.name.toLowerCase().includes(q)
+  return rooms.value.filter((room) =>
+    room.name.toLowerCase().includes(q)
   )
 })
 
-// ================= CREATE =================
 const openCreate = () => {
   editingRow.value = null
   createDialogOpen.value = true
 }
 
-// ================= EDIT =================
-const openEdit = (row: any) => {
+const openEdit = (row: RoomRow) => {
   editingRow.value = row
   editDialogOpen.value = true
 }
 
-// ================= VIEW SCHEDULES =================
-const openViewSchedules = (row: any) => {
+const openViewSchedules = (row: RoomRow) => {
   viewingRoomId.value = row.id
   viewSchedulesOpen.value = true
 }
 
-// ================= DELETE =================
-const requestDelete = (row: any) => {
+const closeDeleteDialog = () => {
+  if (actionLoading.value) return
+  confirmDelete.value = false
+  deletingRow.value = null
+}
+
+const requestDelete = (row: RoomRow) => {
   deletingRow.value = row
   confirmDelete.value = true
+}
+
+const getAccessToken = async () => {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+
+  if (!token) {
+    throw new Error('No active session')
+  }
+
+  return token
 }
 
 const executeDelete = async () => {
   if (!deletingRow.value) return
 
-  const { data: { session } } = await supabase.auth.getSession()
+  actionLoading.value = true
 
   try {
+    const token = await getAccessToken()
+
     await $fetch('/api/admin/delete-room', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${session?.access_token}`
+        Authorization: `Bearer ${token}`
       },
       body: {
         id: deletingRow.value.id
@@ -99,24 +121,29 @@ const executeDelete = async () => {
     })
 
     notify.success('Room deleted')
-    fetchRooms()
+    await fetchRooms()
   } catch (err: any) {
-    notify.error(err?.data?.message || 'Room is currently in use')
+    notify.error(
+      err?.data?.message ||
+      err?.message ||
+      'Cannot delete room. This room is already used in schedules.'
+    )
   } finally {
-    confirmDelete.value = false
-    deletingRow.value = null
+    actionLoading.value = false
+    closeDeleteDialog()
   }
 }
 
-// ================= TOGGLE ACTIVE =================
-const toggleStatus = async (row: any) => {
-  const { data: { session } } = await supabase.auth.getSession()
+const toggleStatus = async (row: RoomRow) => {
+  actionLoading.value = true
 
   try {
+    const token = await getAccessToken()
+
     await $fetch('/api/admin/toggle-room-status', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${session?.access_token}`
+        Authorization: `Bearer ${token}`
       },
       body: {
         id: row.id,
@@ -125,13 +152,14 @@ const toggleStatus = async (row: any) => {
     })
 
     notify.success('Room status updated')
-    fetchRooms()
+    await fetchRooms()
   } catch (err: any) {
-    notify.error(err?.data?.message || 'Status update failed')
+    notify.error(err?.data?.message || err?.message || 'Status update failed')
+  } finally {
+    actionLoading.value = false
   }
 }
 
-// ================= REALTIME =================
 let channel: any
 
 const setupRealtime = () => {
@@ -140,24 +168,27 @@ const setupRealtime = () => {
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'rooms' },
-      fetchRooms
+      () => {
+        fetchRooms()
+      }
     )
     .subscribe()
 }
 
-onMounted(() => {
-  fetchRooms()
+onMounted(async () => {
+  await fetchRooms()
   setupRealtime()
 })
 
 onBeforeUnmount(() => {
-  if (channel) supabase.removeChannel(channel)
+  if (channel) {
+    supabase.removeChannel(channel)
+  }
 })
 </script>
 
 <template>
   <div>
-    <!-- HEADER -->
     <div class="mb-6 d-flex justify-space-between align-center">
       <div>
         <h1 class="text-h5 font-weight-bold">Rooms</h1>
@@ -171,7 +202,6 @@ onBeforeUnmount(() => {
       </v-btn>
     </div>
 
-    <!-- SEARCH -->
     <v-text-field
       v-model="search"
       label="Search room"
@@ -181,7 +211,6 @@ onBeforeUnmount(() => {
       class="mb-4"
     />
 
-    <!-- TABLE -->
     <v-card>
       <v-data-table
         :items="filteredRooms"
@@ -203,43 +232,39 @@ onBeforeUnmount(() => {
             <td><strong>{{ item.name }}</strong></td>
             <td>{{ item.room_type }}</td>
             <td>{{ item.capacity ?? '—' }}</td>
-
             <td>
-              <v-chip
-                size="small"
-                :color="item.is_active ? 'green' : 'grey'"
-              >
+              <v-chip size="small" :color="item.is_active ? 'green' : 'grey'">
                 {{ item.is_active ? 'Active' : 'Inactive' }}
               </v-chip>
             </td>
 
             <td class="text-center">
-              <!-- VIEW SCHEDULES -->
               <v-btn
                 icon
                 size="small"
                 variant="text"
                 color="info"
+                :disabled="actionLoading"
                 @click="openViewSchedules(item)"
               >
                 <v-icon size="18">mdi-eye</v-icon>
               </v-btn>
 
-              <!-- EDIT -->
               <v-btn
                 icon
                 size="small"
                 variant="text"
+                :disabled="actionLoading"
                 @click="openEdit(item)"
               >
                 <v-icon size="18">mdi-pencil</v-icon>
               </v-btn>
 
-              <!-- TOGGLE -->
               <v-btn
                 icon
                 size="small"
                 variant="text"
+                :disabled="actionLoading"
                 :color="item.is_active ? 'warning' : 'green'"
                 @click="toggleStatus(item)"
               >
@@ -248,12 +273,12 @@ onBeforeUnmount(() => {
                 </v-icon>
               </v-btn>
 
-              <!-- DELETE -->
               <v-btn
                 icon
                 size="small"
                 variant="text"
                 color="error"
+                :disabled="actionLoading"
                 @click="requestDelete(item)"
               >
                 <v-icon size="18">mdi-delete</v-icon>
@@ -270,7 +295,6 @@ onBeforeUnmount(() => {
       </v-data-table>
     </v-card>
 
-    <!-- DELETE CONFIRM -->
     <v-dialog v-model="confirmDelete" max-width="420">
       <v-card class="pa-6">
         <h3 class="mb-3">Delete Room</h3>
@@ -281,30 +305,27 @@ onBeforeUnmount(() => {
         </p>
 
         <div class="d-flex justify-end">
-          <v-btn variant="text" @click="confirmDelete = false">
+          <v-btn variant="text" :disabled="actionLoading" @click="closeDeleteDialog">
             Cancel
           </v-btn>
-          <v-btn color="error" @click="executeDelete">
+          <v-btn color="error" :loading="actionLoading" :disabled="actionLoading" @click="executeDelete">
             Delete
           </v-btn>
         </div>
       </v-card>
     </v-dialog>
 
-    <!-- CREATE -->
     <RoomDialog
       v-model="createDialogOpen"
       @success="fetchRooms"
     />
 
-    <!-- EDIT -->
     <RoomDialog
       v-model="editDialogOpen"
       :editData="editingRow"
       @success="fetchRooms"
     />
 
-    <!-- VIEW SCHEDULES -->
     <RoomScheduleDialog
       v-model="viewSchedulesOpen"
       :roomId="viewingRoomId"

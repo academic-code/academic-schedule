@@ -3,49 +3,86 @@ import { ref, watch } from 'vue'
 import { useSupabase } from '@/composables/useSupabase'
 import { useNotifyStore } from '@/stores/useNotifyStore'
 
+type RoomScheduleRow = {
+  id: string
+  day: string
+  time_range: string
+  class_name: string
+  subject_name: string
+  faculty_name: string
+  mode: string
+  status: string
+}
+
 const props = defineProps<{
   modelValue: boolean
   roomId: string | null
 }>()
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: boolean): void
+}>()
 
 const supabase = useSupabase()
 const notify = useNotifyStore()
 
 const loading = ref(false)
-const schedules = ref<any[]>([])
+const schedules = ref<RoomScheduleRow[]>([])
+
+const close = () => {
+  schedules.value = []
+  emit('update:modelValue', false)
+}
 
 watch(
-  () => props.modelValue,
-  async (open) => {
-    if (!open || !props.roomId) return
+  () => [props.modelValue, props.roomId] as const,
+  async ([open, roomId]) => {
+    if (!open || !roomId) {
+      schedules.value = []
+      return
+    }
 
     loading.value = true
-    const { data: { session } } = await supabase.auth.getSession()
 
     try {
-      const res = await $fetch<{ data: any[] }>('/api/admin/room-schedules', {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
+
+      if (!token) {
+        throw new Error('No active session')
+      }
+
+      const res = await $fetch<{ data: RoomScheduleRow[] }>('/api/admin/room-schedules', {
+        method: 'GET',
         headers: {
-          Authorization: `Bearer ${session?.access_token}`
+          Authorization: `Bearer ${token}`
         },
         query: {
-          room_id: props.roomId
+          room_id: roomId
         }
       })
 
-      schedules.value = res.data || []
+      schedules.value = res.data ?? []
     } catch (err: any) {
-      notify.error(err?.data?.message || 'Failed to load schedules')
+      notify.error(
+        err?.data?.message ||
+        err?.message ||
+        'Failed to load room schedules'
+      )
     } finally {
       loading.value = false
     }
-  }
+  },
+  { immediate: true }
 )
 </script>
 
 <template>
-  <v-dialog :model-value="modelValue" max-width="900">
+  <v-dialog
+    :model-value="modelValue"
+    max-width="900"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
     <v-card class="pa-6">
       <h3 class="text-h6 mb-4">Schedules Using This Room</h3>
 
@@ -61,22 +98,20 @@ watch(
             <th>Class</th>
             <th>Subject</th>
             <th>Faculty</th>
+            <th>Mode</th>
+            <th>Status</th>
           </tr>
         </template>
 
         <template #item="{ item }">
           <tr>
             <td>{{ item.day }}</td>
-            <td>
-              {{ item.period_start.start_time }} –
-              {{ item.period_end.end_time }}
-            </td>
-            <td>{{ item.classes?.class_name }}</td>
-            <td>{{ item.subjects?.name }}</td>
-            <td>
-              {{ item.faculty?.last_name }},
-              {{ item.faculty?.first_name }}
-            </td>
+            <td>{{ item.time_range }}</td>
+            <td>{{ item.class_name }}</td>
+            <td>{{ item.subject_name }}</td>
+            <td>{{ item.faculty_name }}</td>
+            <td>{{ item.mode }}</td>
+            <td>{{ item.status }}</td>
           </tr>
         </template>
 
@@ -88,7 +123,7 @@ watch(
       </v-data-table>
 
       <div class="d-flex justify-end mt-4">
-        <v-btn variant="text" @click="emit('update:modelValue', false)">
+        <v-btn variant="text" @click="close">
           Close
         </v-btn>
       </div>
