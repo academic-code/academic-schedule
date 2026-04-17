@@ -4,6 +4,15 @@ import { useSupabase } from '@/composables/useSupabase'
 import { useNotifyStore } from '@/stores/useNotifyStore'
 import AcademicTermDialog from '@/components/admin/AcademicTermDialog.vue'
 
+type AcademicTermRow = {
+  id: string
+  academic_year: string
+  semester: number
+  is_active: boolean
+  is_locked: boolean
+  created_at: string
+}
+
 definePageMeta({
   middleware: 'role',
   roles: ['ADMIN']
@@ -12,64 +21,96 @@ definePageMeta({
 const supabase = useSupabase()
 const notify = useNotifyStore()
 
-const terms = ref<any[]>([])
+const terms = ref<AcademicTermRow[]>([])
 const loading = ref(false)
+const actionLoading = ref(false)
 const search = ref('')
 
-// dialogs
 const dialogOpen = ref(false)
 const confirmActivate = ref(false)
 const confirmDelete = ref(false)
 
-// selection
-const selectedRow = ref<any | null>(null)
-const suggested = ref<any | null>(null)
+const selectedRow = ref<AcademicTermRow | null>(null)
+const suggested = ref<{ academic_year: string; semester: number } | null>(null)
 
-// ================= FETCH =================
+const getAccessToken = async () => {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+
+  if (!token) {
+    throw new Error('No active session')
+  }
+
+  return token
+}
+
 const fetchTerms = async () => {
   loading.value = true
 
-  const { data, error } = await supabase
-    .from('academic_terms')
-    .select('*')
-    .order('created_at', { ascending: false })
+  try {
+    const token = await getAccessToken()
 
-  if (error) notify.error(error.message)
-  else terms.value = data ?? []
+    const res = await $fetch<{ data: AcademicTermRow[] }>('/api/admin/academic-terms/list', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
 
-  loading.value = false
+    terms.value = res.data ?? []
+  } catch (err: any) {
+    notify.error(err?.data?.message || err?.message || 'Failed to load academic terms')
+  } finally {
+    loading.value = false
+  }
 }
 
-// ================= HELPERS =================
 const semesterLabel = (s: number) =>
   s === 1 ? '1st Semester' : s === 2 ? '2nd Semester' : 'Summer'
 
-// ================= SEARCH =================
 const filtered = computed(() => {
-  if (!search.value) return terms.value
-  const q = search.value.toLowerCase()
+  const q = search.value.trim().toLowerCase()
+  if (!q) return terms.value
 
-  return terms.value.filter(t =>
-    t.academic_year.toLowerCase().includes(q) ||
-    semesterLabel(t.semester).toLowerCase().includes(q)
+  return terms.value.filter((term) =>
+    term.academic_year.toLowerCase().includes(q) ||
+    semesterLabel(term.semester).toLowerCase().includes(q)
   )
 })
 
-// ================= SUGGEST NEXT =================
 const suggestNext = () => {
-  if (!terms.value.length) {
-    notify.warning('No existing academic term found')
+  const latest = terms.value[0]
+
+  if (!latest) {
+    suggested.value = {
+      academic_year: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+      semester: 1
+    }
+    dialogOpen.value = true
     return
   }
 
-  const latest = terms.value[0]
-
   if (latest.semester === 1) {
-    suggested.value = { academic_year: latest.academic_year, semester: 2 }
+    suggested.value = {
+      academic_year: latest.academic_year,
+      semester: 2
+    }
   } else if (latest.semester === 2) {
-    suggested.value = { academic_year: latest.academic_year, semester: 3 }
+    suggested.value = {
+      academic_year: latest.academic_year,
+      semester: 3
+    }
   } else {
-    const [start] = latest.academic_year.split('-').map(Number)
+    const parts = latest.academic_year.split('-').map(Number)
+    const firstPart = parts[0]
+
+    if (firstPart === undefined || Number.isNaN(firstPart)) {
+      notify.warning('Latest academic year format is invalid')
+      return
+    }
+
+    const start = firstPart
+
     suggested.value = {
       academic_year: `${start + 1}-${start + 2}`,
       semester: 1
@@ -79,80 +120,113 @@ const suggestNext = () => {
   dialogOpen.value = true
 }
 
-// ================= ACTIVATE =================
-const requestActivate = (row: any) => {
+const requestActivate = (row: AcademicTermRow) => {
   selectedRow.value = row
   confirmActivate.value = true
 }
 
+const closeActivateDialog = () => {
+  if (actionLoading.value) return
+  confirmActivate.value = false
+  selectedRow.value = null
+}
+
 const activateTerm = async () => {
-  const { data: { session } } = await supabase.auth.getSession()
+  if (!selectedRow.value) return
+
+  actionLoading.value = true
 
   try {
+    const token = await getAccessToken()
+
     await $fetch('/api/admin/academic-terms/activate', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${session?.access_token}` },
-      body: { id: selectedRow.value.id }
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: {
+        id: selectedRow.value.id
+      }
     })
 
     notify.success('Academic term activated')
-    fetchTerms()
+    await fetchTerms()
   } catch (err: any) {
-    notify.error(err?.data?.message)
+    notify.error(err?.data?.message || err?.message || 'Failed to activate academic term')
   } finally {
-    confirmActivate.value = false
-    selectedRow.value = null
+    actionLoading.value = false
+    closeActivateDialog()
   }
 }
 
-// ================= LOCK =================
-const toggleLock = async (row: any) => {
-  const { data: { session } } = await supabase.auth.getSession()
+const toggleLock = async (row: AcademicTermRow) => {
+  actionLoading.value = true
 
   try {
+    const token = await getAccessToken()
+
     await $fetch('/api/admin/academic-terms/toggle-lock', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${session?.access_token}` },
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
       body: {
         id: row.id,
         is_locked: !row.is_locked
       }
     })
 
-    notify.success(row.is_locked ? 'Scheduling unlocked' : 'Scheduling locked')
-    fetchTerms()
+    notify.success(row.is_locked ? 'Academic term unlocked' : 'Academic term locked')
+    await fetchTerms()
   } catch (err: any) {
-    notify.error(err?.data?.message)
+    notify.error(err?.data?.message || err?.message || 'Failed to update lock status')
+  } finally {
+    actionLoading.value = false
   }
 }
 
-// ================= DELETE =================
-const requestDelete = (row: any) => {
+const requestDelete = (row: AcademicTermRow) => {
   selectedRow.value = row
   confirmDelete.value = true
 }
 
+const closeDeleteDialog = () => {
+  if (actionLoading.value) return
+  confirmDelete.value = false
+  selectedRow.value = null
+}
+
 const executeDelete = async () => {
-  const { data: { session } } = await supabase.auth.getSession()
+  if (!selectedRow.value) return
+
+  actionLoading.value = true
 
   try {
+    const token = await getAccessToken()
+
     await $fetch('/api/admin/academic-terms/delete', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${session?.access_token}` },
-      body: { id: selectedRow.value.id }
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: {
+        id: selectedRow.value.id
+      }
     })
 
     notify.success('Academic term deleted')
-    fetchTerms()
+    await fetchTerms()
   } catch (err: any) {
-    notify.error(err?.data?.message)
+    notify.error(err?.data?.message || err?.message || 'Failed to delete academic term')
   } finally {
-    confirmDelete.value = false
-    selectedRow.value = null
+    actionLoading.value = false
+    closeDeleteDialog()
   }
 }
 
-onMounted(fetchTerms)
+onMounted(async () => {
+  await fetchTerms()
+})
 </script>
 
 <template>
@@ -165,10 +239,11 @@ onMounted(fetchTerms)
         </p>
       </div>
 
-      <div class="d-flex gap-2">
+      <div class="d-flex ga-2">
         <v-btn variant="outlined" @click="suggestNext">
           Suggest Next Term
         </v-btn>
+
         <v-btn color="primary" @click="dialogOpen = true">
           Add Term
         </v-btn>
@@ -200,10 +275,12 @@ onMounted(fetchTerms)
           <tr>
             <td><strong>{{ item.academic_year }}</strong></td>
             <td>{{ semesterLabel(item.semester) }}</td>
+
             <td>
               <v-chip size="small" :color="item.is_active ? 'green' : 'grey'">
                 {{ item.is_active ? 'ACTIVE' : 'INACTIVE' }}
               </v-chip>
+
               <v-chip
                 v-if="item.is_locked"
                 size="small"
@@ -213,13 +290,15 @@ onMounted(fetchTerms)
                 LOCKED
               </v-chip>
             </td>
+
             <td>{{ new Date(item.created_at).toLocaleDateString() }}</td>
+
             <td class="text-center">
               <v-btn
                 icon
                 size="small"
                 color="success"
-                :disabled="item.is_active"
+                :disabled="actionLoading || item.is_active"
                 @click="requestActivate(item)"
               >
                 <v-icon>mdi-power</v-icon>
@@ -229,7 +308,7 @@ onMounted(fetchTerms)
                 icon
                 size="small"
                 color="warning"
-                :disabled="!item.is_active"
+                :disabled="actionLoading || !item.is_active"
                 @click="toggleLock(item)"
               >
                 <v-icon>
@@ -241,7 +320,7 @@ onMounted(fetchTerms)
                 icon
                 size="small"
                 color="error"
-                :disabled="item.is_active"
+                :disabled="actionLoading || item.is_active"
                 @click="requestDelete(item)"
               >
                 <v-icon>mdi-delete</v-icon>
@@ -258,26 +337,44 @@ onMounted(fetchTerms)
       @success="fetchTerms"
     />
 
-    <!-- CONFIRM ACTIVATE -->
     <v-dialog v-model="confirmActivate" max-width="420">
       <v-card class="pa-6">
-        <h3>Activate Academic Term</h3>
-        <p>This will deactivate the current active term.</p>
+        <h3 class="mb-3">Activate Academic Term</h3>
+        <p>
+          This will deactivate the current active term.
+          <br />
+          Only one academic term can be active at a time.
+        </p>
+
         <div class="d-flex justify-end">
-          <v-btn variant="text" @click="confirmActivate = false">Cancel</v-btn>
-          <v-btn color="success" @click="activateTerm">Activate</v-btn>
+          <v-btn variant="text" :disabled="actionLoading" @click="closeActivateDialog">
+            Cancel
+          </v-btn>
+
+          <v-btn color="success" :loading="actionLoading" :disabled="actionLoading" @click="activateTerm">
+            Activate
+          </v-btn>
         </div>
       </v-card>
     </v-dialog>
 
-    <!-- CONFIRM DELETE -->
     <v-dialog v-model="confirmDelete" max-width="420">
       <v-card class="pa-6">
-        <h3>Delete Academic Term</h3>
-        <p>This action cannot be undone.</p>
+        <h3 class="mb-3">Delete Academic Term</h3>
+        <p>
+          This action cannot be undone.
+          <br />
+          Active academic terms cannot be deleted.
+        </p>
+
         <div class="d-flex justify-end">
-          <v-btn variant="text" @click="confirmDelete = false">Cancel</v-btn>
-          <v-btn color="error" @click="executeDelete">Delete</v-btn>
+          <v-btn variant="text" :disabled="actionLoading" @click="closeDeleteDialog">
+            Cancel
+          </v-btn>
+
+          <v-btn color="error" :loading="actionLoading" :disabled="actionLoading" @click="executeDelete">
+            Delete
+          </v-btn>
         </div>
       </v-card>
     </v-dialog>

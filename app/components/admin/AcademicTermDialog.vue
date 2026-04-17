@@ -3,15 +3,20 @@ import { ref, watch } from 'vue'
 import { useSupabase } from '@/composables/useSupabase'
 import { useNotifyStore } from '@/stores/useNotifyStore'
 
+type SuggestedTerm = {
+  academic_year: string
+  semester: number
+}
+
 const props = defineProps<{
   modelValue: boolean
-  suggested?: {
-    academic_year: string
-    semester: number
-  } | null
+  suggested?: SuggestedTerm | null
 }>()
 
-const emit = defineEmits(['update:modelValue', 'success'])
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: boolean): void
+  (e: 'success'): void
+}>()
 
 const supabase = useSupabase()
 const notify = useNotifyStore()
@@ -20,53 +25,72 @@ const academicYear = ref('')
 const semester = ref<number | null>(null)
 const loading = ref(false)
 
-// ================= PREFILL / RESET =================
+const resetForm = () => {
+  academicYear.value = ''
+  semester.value = null
+}
+
 watch(
-  () => props.modelValue,
-  (open) => {
-    if (!open) return
+  () => [props.modelValue, props.suggested] as const,
+  ([open]) => {
+    if (!open) {
+      resetForm()
+      return
+    }
 
     if (props.suggested) {
       academicYear.value = props.suggested.academic_year
       semester.value = props.suggested.semester
     } else {
-      academicYear.value = ''
-      semester.value = null
+      resetForm()
     }
-  }
+  },
+  { immediate: true }
 )
 
 const close = () => {
-  academicYear.value = ''
-  semester.value = null
+  if (loading.value) return
+  resetForm()
   emit('update:modelValue', false)
 }
 
-// ================= SUBMIT =================
 const submit = async () => {
-  if (!academicYear.value || !semester.value) {
+  if (!academicYear.value.trim() || !semester.value) {
     notify.warning('All fields are required')
     return
   }
 
   loading.value = true
-  const { data: { session } } = await supabase.auth.getSession()
 
   try {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+
+    if (!token) {
+      throw new Error('No active session')
+    }
+
     await $fetch('/api/admin/academic-terms/create', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${session?.access_token}` },
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
       body: {
-        academic_year: academicYear.value,
+        academic_year: academicYear.value.trim(),
         semester: semester.value
       }
     })
 
     notify.success('Academic term created')
+    resetForm()
+    emit('update:modelValue', false)
     emit('success')
-    close()
   } catch (err: any) {
-    notify.error(err?.data?.message || 'Failed to create academic term')
+    notify.error(
+      err?.data?.message ||
+      err?.message ||
+      'Failed to create academic term'
+    )
   } finally {
     loading.value = false
   }
@@ -74,7 +98,11 @@ const submit = async () => {
 </script>
 
 <template>
-  <v-dialog :model-value="modelValue" max-width="520">
+  <v-dialog
+    :model-value="modelValue"
+    max-width="520"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
     <v-card class="pa-6">
       <h3 class="text-h6 mb-4">Add Academic Term</h3>
 
@@ -82,6 +110,7 @@ const submit = async () => {
         v-model="academicYear"
         label="Academic Year (e.g. 2025-2026)"
         variant="outlined"
+        class="mb-2"
       />
 
       <v-select
@@ -96,8 +125,11 @@ const submit = async () => {
       />
 
       <div class="d-flex justify-end mt-4">
-        <v-btn variant="text" @click="close">Cancel</v-btn>
-        <v-btn color="primary" :loading="loading" @click="submit">
+        <v-btn variant="text" :disabled="loading" @click="close">
+          Cancel
+        </v-btn>
+
+        <v-btn color="primary" :loading="loading" :disabled="loading" @click="submit">
           Create
         </v-btn>
       </div>
