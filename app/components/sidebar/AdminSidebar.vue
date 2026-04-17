@@ -15,7 +15,6 @@ const logout = async () => {
 
 <template>
   <v-navigation-drawer permanent width="270">
-    <!-- LOGO -->
     <div class="logo">
       <v-img src="/Logo.png" max-width="190" contain />
     </div>
@@ -63,7 +62,7 @@ const logout = async () => {
         Academic Terms
       </v-list-item>
 
-        <v-list-item
+      <v-list-item
         to="/admin/periods"
         prepend-icon="mdi-book-clock-outline"
         :active="isActive('/admin/periods')"
